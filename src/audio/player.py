@@ -10,6 +10,9 @@ from ..message_event import MessageListener, MessageBroker, MessageType
 from ..async_event import AsyncListener, AsyncBroker, AsyncMessageType
 from ..lib.loggable import Loggable
 
+import time
+from ..lib.profiler import log_step
+
 class VoiceSettings(TypedDict):
     speaker: str
     volume: int
@@ -57,7 +60,8 @@ class ResponsePlayer(Loggable):
             emotion=0,
             emotion_strength=2,
             format="wav",
-            sampling_rate=48000,
+            sampling_rate=16000,
+            bit_depth=24
         )
 
         # Ignore SSL certificate errors
@@ -67,6 +71,9 @@ class ResponsePlayer(Loggable):
         # Initialize the pyaudio stream
         self.pa = pyaudio.PyAudio()
         self._stream = None
+
+        # respeaker setting
+        self._respeaker_index = 1
 
         # Register event handlers
         AsyncBroker().subscribe("wait_chat_finish", self._on_wait_chat_finish)
@@ -127,6 +134,11 @@ class ResponsePlayer(Loggable):
         play the audio file with {filename}
         """
         try:
+            if self._stream is not None:
+                self.log(f"WARNING: Previous stream still exists: {self._stream.is_active()}")
+                self._stream.close()
+                self._stream = None
+                
             wf = wave.open(f, 'rb')
             self.log(f, wf.getframerate(), wf.getsampwidth(),
                     self.pa.get_format_from_width(wf.getsampwidth()))
@@ -148,6 +160,7 @@ class ResponsePlayer(Loggable):
                                         channels=wf.getnchannels(),
                                         rate=wf.getframerate(),
                                         output=True,
+                                        output_device_index=self._respeaker_index,
                                         frames_per_buffer=2048,
                                         stream_callback=callback)
 
@@ -179,9 +192,9 @@ class ResponsePlayer(Loggable):
                f"&emotion={s['emotion']}" + \
                f"&emotion-strength	={s['emotion_strength']}" + \
                "&format=wav" + \
-               "&sampling-rate=48000" + \
+               "&sampling-rate=16000" + \
                f"&text={urllib.parse.quote(text)}"
-
+        start_time = time.time()
         try:
             # Make the request to the API
             response = urllib.request.urlopen(request, data=query.encode('utf-8'))
@@ -192,6 +205,8 @@ class ResponsePlayer(Loggable):
                 response_body = response.read()
                 with open('text.wav', 'wb') as f:
                     f.write(response_body)
+                end_time = time.time()
+                log_step(text, "clova_tts", start_time, end_time)
                 return
             else:
                 self.log(f"Failed to synthesize speech. HTTP response code: {rescode}")

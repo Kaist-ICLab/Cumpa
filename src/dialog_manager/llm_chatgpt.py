@@ -19,6 +19,9 @@ import threading
 from ..async_event import AsyncBroker, AsyncMessageType
 from .hugging_face_transformers_emotion import EmotionAnalyzer
 
+import time
+from ..lib.profiler import log_step
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Initialize DB
@@ -122,6 +125,7 @@ def saveTestSetting(data: chatbotSettingData) -> PhaseManager:
     return phase_manager
 
 async def selectTopic(phase_manager: PhaseManager, conversation_history: str) -> Any:
+    start_time = time.time()
     bot_name, bot_desc = phase_manager.getBotInfo()
     actions = phase_manager.getTopics()
     phase_info = phase_manager.getCurrPhase().getInfo()
@@ -159,7 +163,8 @@ async def selectTopic(phase_manager: PhaseManager, conversation_history: str) ->
             "conversation_history": conversation_history,
         }
     )
-
+    end_time = time.time()
+    log_step(None, "topic_selection", start_time, end_time)
     return response
 
 async def generateResponse(
@@ -168,6 +173,7 @@ async def generateResponse(
     action: str,
     action_reason: str,
 ) -> str:
+    start_time = time.time()
     bot_name, bot_desc = phase_manager.getBotInfo()
     phase_info = phase_manager.getCurrPhase().getInfo()
     
@@ -203,7 +209,8 @@ async def generateResponse(
             "conversation_history": conversation_history + "\nCUMPAR: ",
         }
     )
-
+    end_time = time.time()
+    log_step(None, "response_generation", start_time, end_time)
     return response
 
 
