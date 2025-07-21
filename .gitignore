@@ -8,3 +8,5 @@ assets
 conversation_history.db
 *.whl
 profile/
+*.csv
+.DS_Store

@@ -2,9 +2,10 @@ import csv
 import os
 from datetime import datetime
 
-PROFILE_CSV_FILE = 'cumpa_profile_log.csv'
+PROFILE_CSV_FILE = 'profile/cumpa_profile_log.csv'
 
 def init_profile_csv():
+    os.makedirs(os.path.dirname(PROFILE_CSV_FILE), exist_ok=True)
     if not os.path.exists(PROFILE_CSV_FILE):
         with open(PROFILE_CSV_FILE, mode='w', newline='', encoding='utf-8') as csvfile:
             writer = csv.writer(csvfile)

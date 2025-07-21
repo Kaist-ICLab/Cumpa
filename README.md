@@ -34,3 +34,10 @@ Install it manually:
 ```bash
 pip install dearpygui-1.11.1-cp311-cp311-linux_aarch64.whl
 ```
+
+## For MAC
+
+```bach
+brew install libusb
+pip install pyusb
+```
