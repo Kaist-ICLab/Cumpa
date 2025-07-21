@@ -12,6 +12,7 @@ from ..lib.loggable import Loggable
 
 import time
 from ..lib.profiler import log_step
+from ..lib.respeaker_tuning import get_index
 
 class VoiceSettings(TypedDict):
     speaker: str
@@ -69,11 +70,14 @@ class ResponsePlayer(Loggable):
         ssl._create_default_https_context = ssl._create_unverified_context 
 
         # Initialize the pyaudio stream
-        self.pa = pyaudio.PyAudio()
+        self.pa = pyaudio.PyAudio() # This instance need to be terminated at the end of the whole program.
+        self._info = self.pa.get_host_api_info_by_index(0)
+        self._numdevices = self._info.get('deviceCount')
+
         self._stream = None
 
         # respeaker setting
-        self._respeaker_index = 1
+        self._respeaker_index = get_index(self._numdevices)
 
         # Register event handlers
         AsyncBroker().subscribe("wait_chat_finish", self._on_wait_chat_finish)
