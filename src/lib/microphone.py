@@ -1,5 +1,5 @@
 import pyaudio
-from respeaker_tuning import find
+from ..lib.respeaker_tuning import find
 import numpy as np
 
 pa = pyaudio.PyAudio() # This instance need to be terminated at the end of the whole program.

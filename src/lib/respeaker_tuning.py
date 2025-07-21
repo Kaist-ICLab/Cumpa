@@ -4,6 +4,7 @@ import sys
 import struct
 import usb.core
 import usb.util
+import pyaudio
 
 USAGE = """Usage: python {} -h
         -p      show all parameters
@@ -161,10 +162,26 @@ def get_index(numdevices):
     """
     Get the Respeaker index from the tuning device.
     """
-    for i in range(0, numdevices):
-        if (p.get_device_info_by_host_api_device_index(0, i).get('maxInputChannels')) > 0:
-            return i
-    return None
+    pa = pyaudio.PyAudio()
+    try:
+        if numdevices is None:
+            info = pa.get_host_api_info_by_index(0)
+            numdevices = info.get('deviceCount')
+        
+        for i in range(0, numdevices):
+            device_info = pa.get_device_info_by_host_api_device_index(0, i)
+            device_name = device_info.get('name', '').lower()
+            print(f"Device {i}: {device_name}")
+            max_input_channels = device_info.get('maxInputChannels', 0)
+            
+            if (max_input_channels > 0 and 
+                any(keyword in device_name for keyword in ['respeaker', '4 mic array', 'uac1.0'])):
+                print(f"📤 ReSpeaker index : {i}")
+                return i
+        
+        return None
+    finally:
+        pa.terminate()
 
 def main():
     if len(sys.argv) > 1:
@@ -205,3 +222,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+    get_index(None)
