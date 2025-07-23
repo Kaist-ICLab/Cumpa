@@ -72,7 +72,17 @@ class Graphics(Singleton):
         # 메인 루프 종료 후 컨텍스트 정리
         dpg.destroy_context()
     
+    # def _render_loop(self):
+    #     while dpg.is_dearpygui_running():
+    #         self._visual_cue_texture.update()
+    #         dpg.render_dearpygui_frame()
+
     def _render_loop(self):
-        while dpg.is_dearpygui_running():
-            self._visual_cue_texture.update()
-            dpg.render_dearpygui_frame()
+        try:
+            while dpg.is_dearpygui_running():
+                self._visual_cue_texture.update()
+                dpg.render_dearpygui_frame()
+        except KeyboardInterrupt:
+            print("GUI loop interrupted, cleaning up...")
+            dpg.stop_dearpygui()
+            raise

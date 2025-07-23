@@ -1,12 +1,10 @@
 import pyaudio
-from ..lib.respeaker_tuning import find
+from ..lib.respeaker_tuning import find, get_index
 import numpy as np
+from ..lib.audio_system import AudioSystem
+from ..lib.loggable import Loggable
 
-pa = pyaudio.PyAudio() # This instance need to be terminated at the end of the whole program.
-info = pa.get_host_api_info_by_index(0)
-numdevices = info.get('deviceCount')
-
-class Microphone():
+class Microphone(Loggable):
     """
     class for audiostreams
 
@@ -19,12 +17,16 @@ class Microphone():
 
     # respeaker setting
     RESPEAKER_CHANNELS = 6
-    RESPEAKER_CHUCK = 1024
+    RESPEAKER_CHUNK = 1024
 
     def __init__(self):
+        Loggable.__init__(self)
+        self.set_tag("microphone")
+
+        self.pa = pyaudio.PyAudio()
         self.respeaker_tuning = find()
         self.stream = None
-        self.respeaker_index = self.respeaker_tuning.get_index(numdevices)
+        self.respeaker_index = AudioSystem().get_respeaker_index()
 
     def __enter__(self) -> "Microphone":
         self.open()
@@ -38,6 +40,10 @@ class Microphone():
 
     def close(self) -> None:
         if self.stream:
+            if hasattr(self, 'respeaker_index') and self.respeaker_index is not None:
+                self.log(f"🎤 ReSpeaker INPUT released from index {self.respeaker_index}")
+            else:
+                self.log("🎤 Default microphone released")
             self.stream.close()
             self.stream = None
 
@@ -49,22 +55,26 @@ class Microphone():
             self.close()
 
         if self.respeaker_tuning and self.respeaker_index is not None:
-            self.stream = pa.open(  channels=self.RESPEAKER_CHANNELS,
+            self.stream = self.pa.open(  channels=self.RESPEAKER_CHANNELS,
                                     format=self.PA_FORMAT,
                                     rate=self.SAMPLE_RATE, 
-                                    frames_per_buffer=self.RESPEAKER_CHUCK,
+                                    frames_per_buffer=self.RESPEAKER_CHUNK,
                                     input=True,
                                     input_device_index=self.respeaker_index,
                                     output = False
                                 )
+            self.log(f"🎤 ReSpeaker INPUT accessed at index {self.respeaker_index}")
+            
         else:
-            self.stream = pa.open(  channels=1,
+            self.stream = self.pa.open(  channels=1,
                                     format=self.PA_FORMAT,
                                     rate=self.SAMPLE_RATE, 
                                     frames_per_buffer=self.CHUNK_SIZE,
                                     input=True,
                                     output = False
                                 )
+            self.log("🎤 Using system default microphone")
+            
     
     def read(self, num_frames: int):
         """

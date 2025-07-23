@@ -1,11 +1,16 @@
 import urllib.request
 import os
+import io
 import ssl
 import pyaudio
 import wave
 import asyncio
+import threading
 from typing import Tuple, IO, TypedDict
+from pydub import AudioSegment
 
+from ..lib.time_stamp import get_current_timestamp
+from ..lib.DB import addMessage
 from ..message_event import MessageListener, MessageBroker, MessageType
 from ..async_event import AsyncListener, AsyncBroker, AsyncMessageType
 from ..lib.loggable import Loggable
@@ -13,6 +18,7 @@ from ..lib.loggable import Loggable
 import time
 from ..lib.profiler import log_step
 from ..lib.respeaker_tuning import get_index
+from ..lib.audio_system import AudioSystem
 
 class VoiceSettings(TypedDict):
     speaker: str
@@ -44,7 +50,7 @@ class ResponsePlayer(Loggable):
 
     def __init__(self):
         Loggable.__init__(self)
-        self.set_tag("response_player")
+        self.set_tag("🔊 response_player")
 
         self.chat_done_flag = False
 
@@ -70,20 +76,17 @@ class ResponsePlayer(Loggable):
         ssl._create_default_https_context = ssl._create_unverified_context 
 
         # Initialize the pyaudio stream
-        self.pa = pyaudio.PyAudio() # This instance need to be terminated at the end of the whole program.
-        self._info = self.pa.get_host_api_info_by_index(0)
-        self._numdevices = self._info.get('deviceCount')
-
+        self.pa = pyaudio.PyAudio()
         self._stream = None
 
         # respeaker setting
-        self._respeaker_index = get_index(self._numdevices)
+        self._respeaker_index = AudioSystem().get_respeaker_index()
 
         # Register event handlers
         AsyncBroker().subscribe("wait_chat_finish", self._on_wait_chat_finish)
         AsyncBroker().subscribe("chat_response", self._on_chat_response)
         AsyncBroker().subscribe("wake_up", self._on_wake_up)
-    
+        AsyncBroker().subscribe("wake_up_audio", self._on_wake_up_audio)
     def _on_wait_chat_finish(self, msg: AsyncMessageType):
         print("Chat finished, closing the stream.")
         self.chat_done_flag = True
@@ -108,15 +111,19 @@ class ResponsePlayer(Loggable):
         return emotion_value_map.get(emotion_label, 0)
 
     async def _on_chat_response(self, response: dict):
-        emotion_label = response.get('emotion', "중립")  # 기본값 중립
+        # emotion_label = response.get('emotion', "중립")  # 기본값 중립
 
         if response.get('type') in [None, "text"]:
             # 감정 분석 결과 확인
-            clova_emotion = self.map_emotion_to_value(emotion_label)
-            self.log(f"Emotion label: {emotion_label}, emotion value: {clova_emotion}")
+            # clova_emotion = self.map_emotion_to_value(emotion_label)
+            # self.log(f"Emotion label: {emotion_label}, emotion value: {clova_emotion}")
             # TTS 요청에서 emotion 값 설정
-            self._make_audio(response['msg'], emotion=clova_emotion)
-            await self._play_audio("text.wav")
+            # self._make_audio(response['msg'], emotion=clova_emotion)
+            self._make_audio(response['msg'])
+            
+            await self._play_audio("text.wav", message=response['msg'])
+
+        # nothing is used for below (calling directly with music file name)
         elif response.get('type') == "music-card":
             music_name = response['msg']['src']  # e.g. "eno1.wav"
             music_path = f"src/audio/assets/music/{music_name}" # e.g. "assets/music/eno1.wav"
@@ -133,43 +140,96 @@ class ResponsePlayer(Loggable):
             self.log(f"Unknown response type {response['type']}")
             AsyncBroker().emit(("play_response_end", None))
     
-    async def _play_audio(self, f: IO):
+    async def _play_audio(self, f: str, audio_cue: bool = False, message: str = None):
         """
         play the audio file with {filename}
         """
         try:
             if self._stream is not None:
                 self.log(f"WARNING: Previous stream still exists: {self._stream.is_active()}")
+                if self._respeaker_index is not None:
+                    self.log(f"ReSpeaker OUTPUT stream closed (previous)")
+                else:
+                    self.log("Default speaker stream closed (previous)")
                 self._stream.close()
                 self._stream = None
                 
             wf = wave.open(f, 'rb')
-            self.log(f, wf.getframerate(), wf.getsampwidth(),
-                    self.pa.get_format_from_width(wf.getsampwidth()))
+            self.log(f"Opening {f} {wf.getframerate()} {wf.getsampwidth()} {self.pa.get_format_from_width(wf.getsampwidth())}")
 
             def callback(in_data, frame_count, time_info, status):
                 data = wf.readframes(frame_count)
                 if len(data) == 0 or wf.tell() == wf.getnframes():
                     wf.close()
-                    # 스트림이 끝나면 이벤트 발행
-                    print("self.chat_done_flag", self.chat_done_flag)
-                    if self.chat_done_flag:
-                        AsyncBroker().emit(("chat_done", None))
+                    play_end_time = get_current_timestamp()
+                    addMessage("CUMPAR", message, play_start_time, play_end_time)
+                    if self._respeaker_index is not None:
+                        self.log(f"ReSpeaker OUTPUT playback completed for file: {f}")
                     else:
-                        AsyncBroker().emit(("chat_listening_start", None))
+                        self.log(f"Default speaker playback completed for file: {f}")
+                    
+                    self._stream_completed = True
+                    
+                    def delayed_emit():
+                        time.sleep(0.2)
+                        if self.chat_done_flag:
+                            AsyncBroker().emit(("chat_done", None))
+                        else:
+                            if not audio_cue:
+                                AsyncBroker().emit(("chat_listening_start", None))
+                            else:
+                                pass
+                    
+                    import threading
+                    threading.Thread(target=delayed_emit, daemon=True).start()
                     return (data, pyaudio.paComplete)
                 return (data, pyaudio.paContinue)
 
-            self._stream = self.pa.open(format=self.pa.get_format_from_width(wf.getsampwidth()),
-                                        channels=wf.getnchannels(),
-                                        rate=wf.getframerate(),
-                                        output=True,
-                                        output_device_index=self._respeaker_index,
-                                        frames_per_buffer=2048,
-                                        stream_callback=callback)
-
+            if self._respeaker_index is not None:
+                self.log(f"ReSpeaker OUTPUT accessed at index {self._respeaker_index} for file: {f}")
+            else:
+                self.log(f"Default speaker accessed for file: {f}")
+            
+            self._stream_completed = False
+            
+            play_start_time = get_current_timestamp()
+            self._stream = self.pa.open(
+                format=self.pa.get_format_from_width(wf.getsampwidth()),
+                channels=wf.getnchannels(),
+                rate=wf.getframerate(),
+                output=True,
+                output_device_index=self._respeaker_index,
+                frames_per_buffer=2048,
+                stream_callback=callback
+            )
+            
+            self.log("Audio stream opened, starting playback.")
+            
+            while not self._stream_completed and self._stream.is_active():
+                await asyncio.sleep(0.1)
+            
+            if self._stream is not None:
+                if self._stream.is_active():
+                    self._stream.stop_stream()
+                self._stream.close()
+                self._stream = None
+                self.log("Audio stream explicitly closed and cleaned up.")
+                
         except (FileNotFoundError, wave.Error) as e:
-            self.log(f"Failed to open the audio file {f}: {e}")
+            self.log(f"Failed to open audio file {f}: {e}")
+            # 에러 시에도 이벤트 발행
+            AsyncBroker().emit(("play_response_end", None))
+        except Exception as e:
+            self.log(f"Audio playback error: {e}")
+            if hasattr(self, '_stream') and self._stream is not None:
+                try:
+                    if self._stream.is_active():
+                        self._stream.stop_stream()
+                    self._stream.close()
+                    self._stream = None
+                except Exception as cleanup_error:
+                    self.log(f"Error during stream cleanup: {cleanup_error}")
+            AsyncBroker().emit(("play_response_end", None))
 
     def _make_audio(self, text: str, emotion: int = 0, **settings: VoiceSettings) -> None:
         """
@@ -185,7 +245,7 @@ class ResponsePlayer(Loggable):
 
         # Construct query
         s = { **self._default_voice_settings }
-        s["emotion"] = emotion  # 감정 값 동적으로 설정
+        # s["emotion"] = emotion
         s.update(settings)
         self.log(f"_make_audio emotion: {emotion}")
         
@@ -232,12 +292,16 @@ class ResponsePlayer(Loggable):
             # TODO: write empty audio to text.wav
             return
         
-    async def _on_wake_up(self, _: tuple[str, None]):
+    def _on_wake_up(self, _: tuple[str, None]):
         self.log("Wake Up")
         self.chat_done_flag = False
+        # sound_path = f"src/audio/assets/music/ding.wav" 
+        # await self._play_audio(sound_path)
 
-        sound_path = f"src/audio/assets/music/ding.wav" 
-        await self._play_audio(sound_path)
+    async def _on_wake_up_audio(self, _: tuple[str, None]):
+        self.log("Wake Up Audio")
+        sound_path = f"src/audio/assets/music/ding.wav"
+        await self._play_audio(sound_path, True)       # audio_cue=True (since this is only the audio-cue)
 
     def stop(self):
         self.pa.terminate()

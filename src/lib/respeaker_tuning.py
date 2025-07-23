@@ -171,7 +171,7 @@ def get_index(numdevices):
         for i in range(0, numdevices):
             device_info = pa.get_device_info_by_host_api_device_index(0, i)
             device_name = device_info.get('name', '').lower()
-            print(f"Device {i}: {device_name}")
+            # print(f"Device {i}: {device_name}")
             max_input_channels = device_info.get('maxInputChannels', 0)
             
             if (max_input_channels > 0 and 

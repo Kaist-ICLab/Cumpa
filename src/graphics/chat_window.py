@@ -88,7 +88,7 @@ class ChatWindow:
     def _on_toggle_whisper(self, sender, app_data, user_data=None):
         ChatWindow.use_whisper = app_data  # True면 Whisper 사용, False면 키보드 입력
         if ChatWindow.use_whisper:
-            AsyncBroker().emit(("cumpa_listening_start", None))
+            AsyncBroker().emit(("chat_listening_start", None))
         
     # External Callbacks
     def _on_chat_response(self, response: dict):
