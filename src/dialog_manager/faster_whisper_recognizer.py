@@ -174,6 +174,7 @@ class FasterWhisperRecognizer(Loggable):
 
                             # Whisper 모델로 텍스트 변환
                             try:
+                                user_input_end_time = get_current_timestamp()
                                 self.log("Whisper transcribe_audio")
                                 transcript = self._process_audio_data(wav_buffer)
 
@@ -186,9 +187,7 @@ class FasterWhisperRecognizer(Loggable):
                                         if self.chat_done_flag :
                                             if "대화하자" in transcript and "친구님" in transcript:
                                                 AsyncBroker().emit(("wake_up", None))
-                                        else :
-                                            user_input_end_time = get_current_timestamp()
-                                            
+                                        else :                                            
                                             AsyncBroker().emit(("chat_cycle_time", {"content": "WHISPER MODE", "start_time": self.whisper_start_time, "end_time": user_input_end_time}))
                                             AsyncBroker().emit(("chat_user_input", {"content": transcript, "start_time": user_input_start_time, "end_time": user_input_end_time}))
                             except Exception as e:
