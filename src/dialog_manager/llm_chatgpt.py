@@ -19,6 +19,7 @@ import threading
 from ..async_event import AsyncBroker, AsyncMessageType
 from .hugging_face_transformers_emotion import EmotionAnalyzer
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Initialize DB
@@ -40,6 +41,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 class routerData(BaseModel):
     criteria: str
@@ -71,6 +73,7 @@ class chatbotSettingData(BaseModel):
 class userInputData(BaseModel):
     input: str
 
+
 # get setting data from yaml file
 def getTestSettingData() -> chatbotSettingData:
     try:
@@ -86,6 +89,7 @@ def getTestSettingData() -> chatbotSettingData:
         print(f"setting data validation failed: {e}")
 
     return data
+
 
 # save chatbot setting for test
 def saveTestSetting(data: chatbotSettingData) -> PhaseManager:
@@ -112,7 +116,6 @@ def saveTestSetting(data: chatbotSettingData) -> PhaseManager:
     PHASE_end_time = get_current_timestamp()
     addMessage("PHASE", data.start_phase, PHASE_end_time, PHASE_end_time)
 
-
     action_dict = {}
     for action in data.actions:
         action_dict[action.action_name] = action.action_explanation
@@ -121,10 +124,13 @@ def saveTestSetting(data: chatbotSettingData) -> PhaseManager:
 
     return phase_manager
 
+
 async def selectTopic(phase_manager: PhaseManager, conversation_history: str) -> Any:
     bot_name, bot_desc = phase_manager.getBotInfo()
     actions = phase_manager.getTopics()
     phase_info = phase_manager.getCurrPhase().getInfo()
+    # Check if it's the start of a new phase
+    phase_changed = phase_manager.getPhaseChanged()
     response_format = phase_manager.getCurrPhase().getResponseFormat()
 
     llm = ChatOpenAI(model="gpt-4o", temperature=1)
@@ -160,7 +166,28 @@ async def selectTopic(phase_manager: PhaseManager, conversation_history: str) ->
         }
     )
 
+    # If the next phase is specified, set(change) action to "finish"
+    if response.next_phase:
+        response.action = "finish"
+        response.action_reason = f"We are going to the next phase."
+        # Set the next phase to the response
+
+    # TODO: Is this code efficient?
+    # If this topic selection is the start of a new phase, reset the response
+    if phase_changed:
+        response.action = "start"
+        response.action_reason = "This is the starting point of a new phase."
+        response.next_phase = None
+        response.next_phase_reason = None
+        # If the phase has changed, reset the phase changed flag
+        phase_manager.phase_changed = False
+
+    # debugging
+    print(f"selectTopic-[LLMChat] Response: {response}")
+    print(f"selectTopic-action: {response.action}")
+
     return response
+
 
 async def generateResponse(
     phase_manager: PhaseManager,
@@ -170,7 +197,7 @@ async def generateResponse(
 ) -> str:
     bot_name, bot_desc = phase_manager.getBotInfo()
     phase_info = phase_manager.getCurrPhase().getInfo()
-    
+
     llm = ChatOpenAI(model="gpt-4o", temperature=1)
 
     prompt_template = PromptTemplate.from_template(
@@ -204,6 +231,8 @@ async def generateResponse(
         }
     )
 
+    # debugging
+    print(f"generateResponse-[LLMChat] Response: {response}")
     return response
 
 
@@ -211,12 +240,12 @@ async def executeChatbot(
     phase_manager: PhaseManager, conversation_history: str
 ) -> tuple[str, bool]:
     selector_response = await selectTopic(phase_manager, conversation_history)
-    
+
     # next_phase_info = ""
     # if selector_response.next_phase:
     #     next_phase_info += f"\n- next phase name: {selector_response.next_phase}"
     #     next_phase_info += f"\n- next phase reason: {selector_response.next_phase_reason}"
-        
+
     chatbot_response = await generateResponse(
         phase_manager,
         conversation_history,
@@ -227,6 +256,7 @@ async def executeChatbot(
     changed = phase_manager.goNextPhase(selector_response.next_phase)
 
     return chatbot_response.content, changed
+
 
 class LLMChatManager(threading.Thread, Loggable):
     def __init__(self):
@@ -244,16 +274,18 @@ class LLMChatManager(threading.Thread, Loggable):
         AsyncBroker().subscribe("chat_cycle_time", self._on_cycle_time)
         AsyncBroker().subscribe("chat_user_input", self._on_user_input)
         AsyncBroker().subscribe("wake_up", self._on_wake_up)
-    
+
     async def _on_wake_up(self, _: tuple[str, None]):
         await self._handle_first_input()
 
     def _on_cycle_time(self, msg: dict):
         if self._loop and not self._loop.is_closed():
-            asyncio.run_coroutine_threadsafe(self._cycle_time_queue.put(msg), self._loop)
+            asyncio.run_coroutine_threadsafe(
+                self._cycle_time_queue.put(msg), self._loop
+            )
 
     def _on_user_input(self, msg: dict):
-        self.submit_input(msg)        
+        self.submit_input(msg)
 
     def run(self):
         self._loop = asyncio.new_event_loop()
@@ -275,8 +307,12 @@ class LLMChatManager(threading.Thread, Loggable):
         print("[LLMChat] Started. Waiting for user input...")
         while not self._stop_event.is_set():
             try:
-                cycle_time = await asyncio.wait_for(self._cycle_time_queue.get(), timeout=0.1)
-                user_input = await asyncio.wait_for(self._input_queue.get(), timeout=0.1)
+                cycle_time = await asyncio.wait_for(
+                    self._cycle_time_queue.get(), timeout=0.1
+                )
+                user_input = await asyncio.wait_for(
+                    self._input_queue.get(), timeout=0.1
+                )
                 await self._handle_cycle_time(cycle_time)
                 await self._handle_user_input(user_input)
             except asyncio.TimeoutError:
@@ -289,7 +325,6 @@ class LLMChatManager(threading.Thread, Loggable):
         cycle_end_time = msg["end_time"]
         addMessage("MODE_TURN", cycle_time_text, cycle_start_time, cycle_end_time)
 
-
     async def _handle_first_input(self):
         response_start_time = get_current_timestamp()
         response, changed = await executeChatbot(self.phase_manager, getHistory())
@@ -297,21 +332,28 @@ class LLMChatManager(threading.Thread, Loggable):
         addMessage("CUMPAR", response, response_start_time, response_end_time)
         if changed:
             PHASE_end_time = get_current_timestamp()
-            addMessage("PHASE", self.phase_manager.getCurrPhase().getName(), PHASE_end_time, PHASE_end_time)
+            addMessage(
+                "PHASE",
+                self.phase_manager.getCurrPhase().getName(),
+                PHASE_end_time,
+                PHASE_end_time,
+            )
 
         print(f"[LLMChat] CUMPAR: {response}")
-        AsyncBroker().emit(("chat_response", {"msg": response, "type": "text", "emotion": "중립"}))
+        AsyncBroker().emit(
+            ("chat_response", {"msg": response, "type": "text", "emotion": "중립"})
+        )
 
     async def _handle_user_input(self, msg: dict):
         user_input = msg["content"]
         user_start_time = msg["start_time"]
         user_end_time = msg["end_time"]
-        
+
         if ChatWindow.use_whisper:
             addMessage("USER_WHISPER", user_input, user_start_time, user_end_time)
         else:
             addMessage("USER_KEYBOARD", user_input, user_start_time, user_end_time)
-        
+
         if user_input and self.emotion_analyzer:
             emotion_result = self.emotion_analyzer.analyze_emotion(user_input)
             self.log(f"Emotion analysis user_input: {user_input}")
@@ -323,10 +365,20 @@ class LLMChatManager(threading.Thread, Loggable):
         addMessage("CUMPAR", response, response_start_time, response_end_time)
         if changed:
             PHASE_end_time = get_current_timestamp()
-            addMessage("PHASE", self.phase_manager.getCurrPhase().getName(), PHASE_end_time, PHASE_end_time)
+            addMessage(
+                "PHASE",
+                self.phase_manager.getCurrPhase().getName(),
+                PHASE_end_time,
+                PHASE_end_time,
+            )
 
         print(f"[LLMChat] CUMPAR: {response}")
-        AsyncBroker().emit(("chat_response", {"msg": response, "type": "text", "emotion": emotion_result}))
+        AsyncBroker().emit(
+            (
+                "chat_response",
+                {"msg": response, "type": "text", "emotion": emotion_result},
+            )
+        )
 
     def submit_input(self, msg: dict):
         if self._loop and not self._loop.is_closed():

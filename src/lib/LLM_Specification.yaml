@@ -64,7 +64,7 @@ phases:
       4. Help user to accept the emotion with kindness.
       5. Ask if user is satisfied with the conversation.
     router_list:
-      - criteria: If user satisfied with the conversation.
+      - criteria: If user is satisfied with the conversation.
         next_phase: Goodbye
       - criteria: If user is not satisfied or wants to talk more.
         next_phase: Greeting
@@ -88,7 +88,7 @@ phases:
       4. Help user to accept the emotion with kindness.
       5. Ask if user is satisfied with the conversation.
     router_list:
-      - criteria: If user satisfied with the conversation.
+      - criteria: If user is satisfied with the conversation.
         next_phase: Goodbye
       - criteria: If user is not satisfied or wants to talk more.
         next_phase: Greeting
@@ -112,7 +112,7 @@ phases:
       4. Help user to accept the emotion with kindness.
       5. Ask if user is satisfied with the conversation.
     router_list:
-      - criteria: If user satisfied with the conversation.
+      - criteria: If user is satisfied with the conversation.
         next_phase: Goodbye
       - criteria: If user is not satisfied or wants to talk more.
         next_phase: Greeting
@@ -136,7 +136,7 @@ phases:
       4. Help user to accept the emotion with kindness.
       5. Ask if user is satisfied with the conversation.
     router_list:
-      - criteria: If user satisfied with the conversation.
+      - criteria: If user is satisfied with the conversation.
         next_phase: Goodbye
       - criteria: If user is not satisfied or wants to talk more.
         next_phase: Greeting
@@ -159,7 +159,7 @@ phases:
       4. Help user to accept the emotion with kindness.
       5. Ask if user is satisfied with the conversation.
     router_list:
-      - criteria: If user satisfied with the conversation.
+      - criteria: If user is satisfied with the conversation.
         next_phase: Goodbye
       - criteria: If user is not satisfied or wants to talk more.
         next_phase: Greeting
@@ -182,7 +182,7 @@ phases:
       4. Help user to accept the emotion with kindness.
       5. Ask if user is satisfied with the conversation.
     router_list:
-      - criteria: If user satisfied with the conversation.
+      - criteria: If user is satisfied with the conversation.
         next_phase: Goodbye
       - criteria: If user is not satisfied or wants to talk more.
         next_phase: Greeting
@@ -206,7 +206,7 @@ phases:
       4. Help user to accept the desire with kindness.
       5. Ask if user is satisfied with the conversation.
     router_list:
-      - criteria: If user satisfied with the conversation.
+      - criteria: If user is satisfied with the conversation.
         next_phase: Goodbye
       - criteria: If user is not satisfied or wants to talk more.
         next_phase: Greeting
@@ -230,7 +230,7 @@ phases:
       4. Help user to accept the desire with kindness.
       5. Ask if user is satisfied with the conversation.
     router_list:
-      - criteria: If user satisfied with the conversation.
+      - criteria: If user is satisfied with the conversation.
         next_phase: Goodbye
       - criteria: If user is not satisfied or wants to talk more.
         next_phase: Greeting
@@ -258,7 +258,7 @@ phases:
       8. Help user to accept the three emotions with kindness.
       9. Ask if user is satisfied with the conversation.
     router_list:
-      - criteria: If user satisfied with the conversation.
+      - criteria: If user is satisfied with the conversation.
         next_phase: Goodbye
       - criteria: If user is not satisfied or wants to talk more.
         next_phase: Greeting
@@ -286,7 +286,7 @@ phases:
       8. Help user to accept the three emotions with kindness.
       9. Ask if user is satisfied with the conversation.
     router_list:
-      - criteria: If user satisfied with the conversation.
+      - criteria: If user is satisfied with the conversation.
         next_phase: Goodbye
       - criteria: If user is not satisfied or wants to talk more.
         next_phase: Greeting
@@ -306,7 +306,7 @@ phases:
       2. Guide user to conduct mindfulness meditation step by step.
       3. Ask if user is satisfied with the meditation.
     router_list:
-      - criteria: If user satisfied with the conversation.
+      - criteria: If user is satisfied with the conversation.
         next_phase: Goodbye
       - criteria: If user is not satisfied or wants to talk more.
         next_phase: Greeting

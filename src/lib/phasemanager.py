@@ -11,6 +11,8 @@ class PhaseManager:
         self.topics = {}  # : dict[str, str]
         self.bot_name = name
         self.bot_desc = description
+        # Phase changed flag
+        self.phase_changed = False
 
     def addNewPhase(self, phase: Phase) -> str:
         if phase.name in self.phase_dict:
@@ -41,7 +43,7 @@ class PhaseManager:
     def getCurrPhase(self) -> Phase:
 
         return self.current_phase
-    
+
     def goNextPhase(self, next_phase: str | None) -> bool:
         if next_phase == None:
             # print(f"There is no phase result, keep track on current phase.")
@@ -49,10 +51,14 @@ class PhaseManager:
         else:
             if next_phase in self.phase_dict:
                 self.current_phase = self.phase_dict[next_phase]
-                
+                # Set the phase changed flag
+                self.phase_changed = True
+
                 if next_phase == "FINISH":
                     print("Starting a new conversation. Initializing Greeting phase.")
-                    self.setStartPhase("Greeting")  # 'Greeting'으로 돌아가서 대화 초기화
+                    self.setStartPhase(
+                        "Greeting"
+                    )  # 'Greeting'으로 돌아가서 대화 초기화
                     self.setCurrPhase("Greeting")  # 새로운 대화 흐름 시작
                     AsyncBroker().emit(("wait_chat_finish", None))
                 return True
@@ -77,3 +83,9 @@ class PhaseManager:
     def getBotInfo(self) -> tuple[str, str]:
 
         return self.bot_name, self.bot_desc
+
+    def getPhaseChanged(self) -> bool:
+        """
+        Check if the phase has changed.
+        """
+        return self.phase_changed
