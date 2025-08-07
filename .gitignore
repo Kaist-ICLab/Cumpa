@@ -3,6 +3,7 @@ __pycache__
 .mypy_cache
 .env
 credentials.json
+iclab-cumpa-71492aec6bff.json
 text.wav
 assets
 *.db
