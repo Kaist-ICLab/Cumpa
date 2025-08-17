@@ -11,8 +11,8 @@ class PhaseManager:
         self.topics = {}  # : dict[str, str]
         self.bot_name = name
         self.bot_desc = description
-        # Phase changed flag
-        self.phase_changed = False
+        self.phase_changed = False  # Phase changed flag
+        self.next_finish = False  # The next action will be finish or not
 
     def addNewPhase(self, phase: Phase) -> str:
         if phase.name in self.phase_dict:
@@ -75,7 +75,7 @@ class PhaseManager:
 
     def getTopics(self) -> dict[str, str]:
         available_topics = {}
-        for topic_name in self.current_phase.topic_list:
+        for topic_name in self.current_phase.action_list:
             available_topics[topic_name] = self.topics[topic_name]
 
         return available_topics
@@ -89,3 +89,13 @@ class PhaseManager:
         Check if the phase has changed.
         """
         return self.phase_changed
+
+    def getPhase(self, name: str) -> Phase:
+        """
+        Get a specific phase by its name.
+        Used in authoring manager to retrieve a phase in the script.
+        """
+        if name in self.phase_dict:
+            return self.phase_dict[name]
+        else:
+            raise ValueError(f"Phase named {name} does not exist.")

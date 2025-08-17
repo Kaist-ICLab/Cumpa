@@ -2,7 +2,9 @@ bot_name: Cumpa
 
 bot_desc: An empathetic chatbot for mental health care which helps users to be aware of and accept their emotion and desire.
 
-start_phase: Greeting
+start_phases: 
+  - Greeting
+  - Greeting_authored
 
 finish_phases: 
   - Goodbye
@@ -13,6 +15,7 @@ phases:
     action_list:
       - start
       - finish
+      - ask_emotion
       - ask_question
       - give_example
       - fallback
@@ -44,12 +47,61 @@ phases:
         next_phase: IV5-neg
       - criteria: If user wants to conduct a mindfulness meditation.
         next_phase: IV6
+      # Temporary criteria for testing micro-interventions
+      - criteria: If user has POSITIVE emotion.
+        next_phase: notice_five_things
+      - criteria: If user has NEGATIVE emotion.
+        next_phase: hands_as_thoughts
+      - criteria: If user has NEUTRAL emotion.
+        next_phase: five_senses
+      - criteria: If user has NEUTRAL emotion.
+        next_phase: dandelion
+
+  - name: Greeting_authored
+    goal: Greet user with kindness.
+    action_list:
+      - start
+      - finish
+      - ask_emotion
+      - ask_question
+      - give_example
+      - fallback
+    instruction: | 
+      Refer to the basic steps below, but you can adjust them according to the user's utterance.
+      1. Greet user.
+      2. Ask user how user feels now.
+      3. Ask user to describe the emotion, and reason of the emotion.
+    # TODO: Temporary router_list; later we will remove this
+    router_list:
+      - criteria: If user has POSITIVE emotion, and you want user to pay attention to user's emotion.
+        next_phase: IV1-pos
+      - criteria: If user has NEGATIVE emotion, and you want user to pay attention to user's emotion.
+        next_phase: IV1-neg
+      - criteria: If user has POSITIVE emotion, and you want user to pay attention to user's situation of the emotion.
+        next_phase: IV2-pos
+      - criteria: If user has NEGATIVE emotion, and you want user to pay attention to user's situation of the emotion.
+        next_phase: IV2-neg
+      - criteria: If user has POSITIVE emotion, and you want user to notice user's thought, and body's reaction of the emotion.
+        next_phase: IV3-pos
+      - criteria: If user has NEGATIVE emotion, and you want user to notice user's thought, and body's reaction of the emotion.
+        next_phase: IV3-neg
+      - criteria: If user has POSITIVE emotion, and you want user to pay attention to desire that user hope, and expected behind the emotion.
+        next_phase: IV4-pos
+      - criteria: If user has NEGATIVE emotion, and you want user to pay attention to desire that user hope, and expected behind the emotion.
+        next_phase: IV4-neg
+      - criteria: If user has POSITIVE emotion, and you want user to notice fulfilled desires among 3 fundamental desires behind the emotion.
+        next_phase: IV5-pos
+      - criteria: If user has NEGATIVE emotion, and you want user to notice unfulfilled desires among 3 fundamental desires behind the emotion.
+        next_phase: IV5-neg
+      - criteria: If user wants to conduct a mindfulness meditation.
+        next_phase: IV6
   
   - name: IV1-pos
     goal: Guide user to express user's POSITIVE emotion and ask if user is satisfied with the conversation.
     action_list:
       - start
       - finish
+      - ask_emotion
       - ask_question
       - give_example
       - fallback
@@ -74,6 +126,7 @@ phases:
     action_list:
       - start
       - finish
+      - ask_emotion
       - ask_question
       - give_example
       - fallback
@@ -98,6 +151,7 @@ phases:
     action_list:
       - start
       - finish
+      - ask_emotion
       - ask_question
       - give_example
       - fallback
@@ -122,6 +176,7 @@ phases:
     action_list:
       - start
       - finish
+      - ask_emotion
       - ask_question
       - give_example
       - fallback
@@ -146,6 +201,7 @@ phases:
     action_list:
       - start
       - finish
+      - ask_emotion
       - ask_question
       - give_example
       - fallback
@@ -169,6 +225,7 @@ phases:
     action_list:
       - start
       - finish
+      - ask_emotion
       - ask_question
       - give_example
       - fallback
@@ -192,6 +249,7 @@ phases:
     action_list:
       - start
       - finish
+      - ask_emotion
       - ask_question
       - give_example
       - fallback
@@ -216,6 +274,7 @@ phases:
     action_list:
       - start
       - finish
+      - ask_emotion
       - ask_question
       - give_example
       - fallback
@@ -240,6 +299,7 @@ phases:
     action_list:
       - start
       - finish
+      - ask_emotion
       - ask_question
       - give_example
       - fallback
@@ -268,6 +328,7 @@ phases:
     action_list:
       - start
       - finish
+      - ask_emotion
       - ask_question
       - give_example
       - fallback
@@ -296,6 +357,7 @@ phases:
     action_list:
       - start
       - finish
+      - ask_emotion
       - ask_question
       - give_example
       - fallback
@@ -311,23 +373,129 @@ phases:
       - criteria: If user is not satisfied or wants to talk more.
         next_phase: Greeting
 
+
+  - name: notice_five_things
+    goal: Guide user to pay attention to one's senses by identifying five things that user can see, hear, and feel in contact with one's body.
+    action_list:
+      - start
+      - finish
+      - ask_emotion
+      - ask_question
+      - give_example
+      - fallback
+      - express_experience
+      - accept_experience_with_kindness
+    instruction: |
+      Refer to the basic steps below, but you can adjust them according to the user's utterance.
+      1. Explain what will be done in the current phase.
+      2. Help user to identify five things that user can see.
+      3. Help user to identify five things that user can hear.
+      4. Help user to identify five things that user can feel in contact with one's body.
+      5. Help user to accept the experience with kindness.
+      6. Ask if user is satisfied with the conversation.
+    router_list:
+      - criteria: If user is satisfied with the conversation.
+        next_phase: Goodbye
+      - criteria: If user is not satisfied or wants to talk more.
+        next_phase: Greeting
+
+  - name: hands_as_thoughts
+    goal: Guide user to pay attention to one's thoughts by imagining one's hands as thoughts and letting them go.
+    action_list:
+      - start
+      - finish
+      - ask_emotion
+      # - step_by_step
+      - ask_question
+      - fallback
+      - express_experience
+      - accept_experience_with_kindness
+    instruction: |
+      Refer to the basic steps below. Do not explain or guide steps 2, 3, 4 all at once. Proceed with each step 2, 3, 4 one by one. Always check whether the user has followed before moving on to the next step.
+      1. Explain what will be done in the current phase.
+      2. Help user to imagine that user's hands are thoughts.
+      3. Help user to raise one's hands towards one's face to cover one's eyes.
+      4. Help user to lower one's hands, creating distance between them and one's eyes.
+      5. Help user to accept the experience with kindness.
+      6. Ask if user is satisfied with the conversation.
+    router_list:
+      - criteria: If user is satisfied with the conversation.
+        next_phase: Goodbye
+      - criteria: If user is not satisfied or wants to talk more.
+        next_phase: Greeting
+
+  - name: five_senses
+    goal: Guide user to use the five senses (sight, hearing, smell, taste, and touch) to help manage intense emotions and ground oneself in the present moment during times of stress or crisis.
+    action_list:
+      - start
+      - finish
+      - ask_emotion
+      - ask_question
+      - give_example
+      - fallback
+      - express_experience
+      - score_experience
+      - accept_experience_with_kindness
+    instruction: |
+      Refer to the basic steps below, but you can adjust them according to the user's utterance.
+      1. Explain what will be done in the current phase.
+      2. Help user to identify five things that user can see.
+      3. Help user to identify five things that user can hear.
+      4. Help user to identify five things that user can feel in contact with one's body.
+      5. Help user to identify five things that user can smell.
+      6. Help user to identify five things that user can taste.
+      7. Help user to accept the experience with kindness.
+      8. Ask if user is satisfied with the conversation.
+    router_list:
+      - criteria: If user is satisfied with the conversation.
+        next_phase: Goodbye
+      - criteria: If user is not satisfied or wants to talk more.
+        next_phase: Greeting
+
+  - name: dandelion
+    goal: Guide user to visualize a dandelion with its seeds and imagine think of those seeds as thoughts and feelings, imagining them blowing away in the wind, allowing for acceptance and space from the internal experience.
+    action_list:
+      - start
+      - finish
+      - ask_emotion
+      # - step_by_step
+      - ask_question
+      - fallback
+      - express_experience
+      - score_experience
+      - accept_experience_with_kindness
+    instruction: |
+      Refer to the basic steps below. Do not explain or guide steps 2, 3, 4 all at once. Proceed with each step 2, 3, 4 one by one. Always check whether the user has followed before moving on to the next step.
+      1. Explain what will be done in the current phase.
+      2. Help user to visualize a dandelion with its seeds.
+      3. Help user to imagine that the seeds are thoughts and feelings.
+      4. Help user to imagine the seeds blowing away in the wind.
+      5. Help user to accept the experience with kindness.
+      6. Ask if user is satisfied with the conversation.
+    router_list:
+      - criteria: If user is satisfied with the conversation.
+        next_phase: Goodbye
+      - criteria: If user is not satisfied or wants to talk more.
+        next_phase: Greeting
+
   - name: Goodbye
     goal: Say goodbye to the user.
     action_list:
       - finish
-    instruction: It will be the last chatbot response of the conversation so don't make a response that requires a user's answer.
+    instruction: It will be the last chatbot response of the conversation so don't make a response that requires a user's answer, or implies a next step.
     router_list:
       - criteria: Always select this.
         next_phase: FINISH
       - criteria: If user is not satisfied or wants to talk more.
         next_phase: Greeting
-  
 
 actions:
   - action_name: start
     action_explanation: Briefly explain what will be done on the current phase and start the conversation.
   - action_name: finish
-    action_explanation: Wrap up the current phase's conversation.
+    action_explanation: Wrap up the current intervention, without implying about the next step.
+  - action_name: ask_emotion
+    action_explanation: Ask user how user feels now.
   - action_name: ask_question
     action_explanation: Ask question to user.
   - action_name: give_example

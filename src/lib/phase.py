@@ -7,13 +7,13 @@ class Phase:
         self,
         name: str,
         goal: str,
-        topic_list: list[str],
+        action_list: list[str],
         instruction: str,
         router_list: list[dict[str, str]],
     ):
         self.name = name
         self.goal = goal
-        self.topic_list = topic_list
+        self.action_list = action_list
         self.instruction = instruction
         self.router_list = router_list
 
@@ -22,7 +22,7 @@ class Phase:
         return {
             "name": self.name,
             "goal": self.goal,
-            "topic_list": self.topic_list,
+            "action_list": self.action_list,
             "instruction": self.instruction,
         }
 
@@ -59,6 +59,25 @@ class Phase:
                 str | None,
                 Field(
                     description="A detailed reason for the next phase selection. If you didn't select the next phase, just remain it None."
+                ),
+            ),
+        )
+
+        return format
+
+    def getAuthoredResponseFormat(self) -> BaseModel:
+        format = create_model(
+            "ResponseFormat",
+            action=(
+                str,
+                Field(
+                    description="An action for generating current response. You should select one action from the available actions."
+                ),
+            ),
+            action_reason=(
+                str,
+                Field(
+                    description="A detailed reason for the action selection. If you need further clarification on the action, you can add it here."
                 ),
             ),
         )

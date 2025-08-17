@@ -20,15 +20,18 @@ def initialize():
     conn.commit()
     conn.close()
 
-def addMessage(SPEAKER: str, CONTENT: str, START_TIME: int, END_TIME: int):        
+
+def addMessage(SPEAKER: str, CONTENT: str, START_TIME: int, END_TIME: int):
     if SPEAKER not in ["USER_KEYBOARD", "USER_WHISPER", "CUMPAR", "MODE_TURN", "PHASE"]:
-        raise ValueError("speaker should be one of 'USER_KEYBOARD', 'USER_WHISPER', 'CUMPAR', 'MODE_TURN', 'PHASE'.")
-    
+        raise ValueError(
+            "speaker should be one of 'USER_KEYBOARD', 'USER_WHISPER', 'CUMPAR', 'MODE_TURN', 'PHASE'."
+        )
+
     conn = sqlite3.connect("./src/lib/conversation_history.db")
     cursor = conn.cursor()
     cursor.execute(
         "INSERT INTO history (SPEAKER, CONTENT, START_TIME, END_TIME) VALUES (?, ?, ?, ?)",
-        (SPEAKER, CONTENT, START_TIME, END_TIME)
+        (SPEAKER, CONTENT, START_TIME, END_TIME),
     )
     conn.commit()
     conn.close()
@@ -42,11 +45,13 @@ def getHistory() -> str:
     conn.close()
 
     temp = []
-    for SPEAKER, CONTENT, START_TIME, END_TIME  in rows:
+    for SPEAKER, CONTENT, START_TIME, END_TIME in rows:
         if SPEAKER == "PHASE":
             temp.append(f"\n[{CONTENT}]")
         else:
-            temp.append(f"{SPEAKER}: {CONTENT}: {START_TIME}: {END_TIME}")  # 시간 정보 추가
+            temp.append(
+                f"{SPEAKER}: {CONTENT}: {START_TIME}: {END_TIME}"
+            )  # 시간 정보 추가
 
     return "\n".join(temp)
 
@@ -58,24 +63,54 @@ def reset():
     cursor.execute("DELETE FROM sqlite_sequence WHERE name='history'")
     conn.commit()
     conn.close()
-    
-    
+
+
 def saveConversation(index: int, filepath: str):
     conn = sqlite3.connect("./src/lib/conversation_history.db")
     cursor = conn.cursor()
     cursor.execute("SELECT SPEAKER, CONTENT, START_TIME, END_TIME FROM history")
     rows = cursor.fetchall()
     conn.close()
-    
+
     file_exists = os.path.exists(filepath)
 
-    with open(filepath, mode='a', newline='', encoding='utf-8') as csv_file:
+    with open(filepath, mode="a", newline="", encoding="utf-8") as csv_file:
         writer = csv.writer(csv_file)
 
         if not file_exists:
-            writer.writerow(["INDEX", "ROLE", "MESSAGE", "START_TIME", "END_TIME"])  # 시간 추가
+            writer.writerow(
+                ["INDEX", "ROLE", "MESSAGE", "START_TIME", "END_TIME"]
+            )  # 시간 추가
 
         for row in rows:
             ROLE, MESSAGE, START_TIME, END_TIME = row
             if ROLE != "PHASE":
-                writer.writerow([index, ROLE, MESSAGE, START_TIME, END_TIME])  # 시간 정보 함께 저장
+                writer.writerow(
+                    [index, ROLE, MESSAGE, START_TIME, END_TIME]
+                )  # 시간 정보 함께 저장
+
+
+def getCurrentResponse() -> str:
+    """
+    Get the latest response from either "USER_KEYBOARD" or "USER_WHISPER"
+    """
+    conn = sqlite3.connect("./src/lib/conversation_history.db")
+    cursor = conn.cursor()
+
+    # Get the most recent user message based on END_TIME or ID
+    cursor.execute(
+        """
+        SELECT CONTENT FROM history
+        WHERE SPEAKER IN ("USER_KEYBOARD", "USER_WHISPER")
+        ORDER BY END_TIME DESC
+        LIMIT 1
+    """
+    )
+
+    row = cursor.fetchone()
+    conn.close()
+
+    if row:
+        return row[0]  # Return the CONTENT
+    else:
+        return ""  # Return empty string if nothing is found

@@ -1,3 +1,6 @@
+# This file provides the AuthoredLLMChatManager used with authoring tool.
+# Later this sepeerate file will somehow be merged into llm_chatgpt.py (e.g., defining a new class, etc.) for hybrid mode.
+
 from pydantic import BaseModel, ValidationError
 import yaml
 from fastapi import FastAPI, HTTPException
@@ -10,7 +13,14 @@ from ..lib.time_stamp import get_current_timestamp
 from ..lib.loggable import Loggable
 from ..lib.phasemanager import PhaseManager
 from ..lib.phase import Phase
-from ..lib.DB import initialize, addMessage, getHistory, reset, saveConversation
+from ..lib.DB import (
+    initialize,
+    addMessage,
+    getHistory,
+    reset,
+    saveConversation,
+    getCurrentResponse,
+)
 from ..graphics.chat_window import ChatWindow
 from langchain_core.prompts import PromptTemplate
 from langchain_openai import ChatOpenAI
@@ -19,6 +29,29 @@ from typing import Any
 import threading
 from ..async_event import AsyncBroker, AsyncMessageType
 from .hugging_face_transformers_emotion import EmotionAnalyzer
+
+from ..lib.authored import script
+from ..lib.authoringmanager import AuthoringManager
+
+
+def analyze_emotion() -> str:
+    """
+    Analyze the emotion of the latest user input using the EmotionAnalyzer.
+    Return "negative", "positive", or "neutral" based on the analysis.
+    """
+    emotion_analyzer = EmotionAnalyzer()
+    latest_input = getCurrentResponse()
+    if latest_input:
+        emotion = emotion_analyzer.analyze_emotion(latest_input)
+        if emotion == "기쁨":
+            print("User emotion detected as positive.")
+            return "positive"
+        elif emotion == "중립":
+            print("User emotion detected as neutral.")
+            return "neutral"
+        else:
+            print("User emotion detected as negative.")
+            return "negative"
 
 
 @asynccontextmanager
@@ -54,7 +87,7 @@ class phaseData(BaseModel):
     goal: str
     action_list: list[str]
     instruction: str
-    router_list: Optional[list[routerData]] = []
+    router_list: Optional[list[routerData]] = []  # Optional, default to empty list
 
 
 class actionData(BaseModel):
@@ -65,10 +98,10 @@ class actionData(BaseModel):
 class chatbotSettingData(BaseModel):
     bot_name: str
     bot_desc: str
-    start_phases: list[str]  # List of start phases
-    finish_phases: list[str]  # Goodbye
-    phases: list[phaseData]  # List of Interventions
-    actions: list[actionData]  # List of Actions
+    start_phases: list[str]
+    finish_phases: list[str]
+    phases: list[phaseData]
+    actions: list[actionData]
 
 
 class userInputData(BaseModel):
@@ -108,12 +141,12 @@ def saveTestSetting(data: chatbotSettingData) -> PhaseManager:
         phase_manager.addNewPhase(new_phase)  # Add phase to phase manager
 
     phase_manager.addNewPhase(Phase("FINISH", "", [], "", []))
-    phase_manager.setStartPhase(data.start_phases[0])  # 'Greeting' phase
-    phase_manager.setCurrPhase(data.start_phases[0])
+    phase_manager.setStartPhase(data.start_phases[1])  # 'Greeting_authored' phase
+    phase_manager.setCurrPhase(data.start_phases[1])
     # Reset DB for new chatbot
     reset()
     PHASE_end_time = get_current_timestamp()
-    addMessage("PHASE", data.start_phases[0], PHASE_end_time, PHASE_end_time)
+    addMessage("PHASE", data.start_phases[1], PHASE_end_time, PHASE_end_time)
 
     action_dict = {}
     for action in data.actions:
@@ -123,7 +156,7 @@ def saveTestSetting(data: chatbotSettingData) -> PhaseManager:
     return phase_manager
 
 
-async def selectTopic(phase_manager: PhaseManager, conversation_history: str) -> Any:
+async def selectAction(phase_manager: PhaseManager, conversation_history: str) -> Any:
     # 1. Check for a phase change first.
     # If this is the start of a new phase and is not Goodbye, set action to "start".
     if (
@@ -143,11 +176,25 @@ async def selectTopic(phase_manager: PhaseManager, conversation_history: str) ->
         phase_manager.phase_changed = False
         return response
 
-    # 2. If it's not a phase change, proceed with the normal LLM call.
+    # 2. Check if the action should be "finish".
+    if phase_manager.next_finish:
+        phase_manager.next_finish = False
+        response = type(
+            "Response",
+            (object,),
+            {
+                "action": "finish",
+                "action_reason": "The user has expressed one's emotion, so we will move on to the next phase depending on the emotion.",
+            },
+        )()
+
+    # 3. If it's not a phase change, proceed with the normal LLM call.
+    # Decide action based on the current phase and conversation history.
+    # Phase will not be decided here; It will be determined by AuthoringManager.
     bot_name, bot_desc = phase_manager.getBotInfo()
     actions = phase_manager.getTopics()
     phase_info = phase_manager.getCurrPhase().getInfo()
-    response_format = phase_manager.getCurrPhase().getResponseFormat()
+    response_format = phase_manager.getCurrPhase().getAuthoredResponseFormat()
 
     llm = ChatOpenAI(model="gpt-4o", temperature=1)
     llm = llm.with_structured_output(response_format)
@@ -156,9 +203,9 @@ async def selectTopic(phase_manager: PhaseManager, conversation_history: str) ->
         """
     [Task]
     You are an action selector of the {bot_name}, which is {bot_desc}. 
-    Your role is to do two things with reference to the "Context".
-    1. Decide whether the main goal of the current phase is achieved. And if it is achieved, select which phase to go next.
-    2. Decide which action to use for the current conversation turn. You can only select one action from the available actions below.
+    Your role is to decide which action to use for the current conversation turn, with reference to the "Context".
+    If the main goal of the current phase is achieved, select "ask_emotion" for action.
+    You can only select one action from the available actions below.
     
     [Context]
     - current phase name: {phase_name}
@@ -182,11 +229,9 @@ async def selectTopic(phase_manager: PhaseManager, conversation_history: str) ->
         }
     )
 
-    # 3. Check if the response contains a next phase.
-    # If this is the end of the current phase, set action to "finish".
-    if response.next_phase:
-        response.action = "finish"
-        response.action_reason = f"The goal of current phase is achieved, and so we are finishing the current phase."
+    # If the action is "ask_emotion", the next action will be "finish"
+    if response.action == "ask_emotion":
+        phase_manager.next_finish = True
 
     return response
 
@@ -236,9 +281,11 @@ async def generateResponse(
 
 
 async def executeChatbot(
-    phase_manager: PhaseManager, conversation_history: str
+    phase_manager: PhaseManager,
+    authoring_manager: AuthoringManager,
+    conversation_history: str,
 ) -> tuple[str, bool]:
-    selector_response = await selectTopic(phase_manager, conversation_history)
+    selector_response = await selectAction(phase_manager, conversation_history)
 
     chatbot_response = await generateResponse(
         phase_manager,
@@ -247,12 +294,22 @@ async def executeChatbot(
         selector_response.action_reason,
     )
 
-    changed = phase_manager.goNextPhase(selector_response.next_phase)
+    # If the action was finish, next turn will be a new phase
+    if selector_response.action == "finish":
+        print("[LLMChat] Action is 'finish', next phase will be selected.")
+        # Get next phase from the authoring manager
+        next_phase = authoring_manager.get_next_intervention()
+        if next_phase:
+            changed = phase_manager.goNextPhase(next_phase.getName())
+            print(f"[LLMChat] Phase changed to: {next_phase.getName()}")
+            return chatbot_response.content, changed
+    print(
+        f"[LLMChat] No phase change, current phase: {phase_manager.getCurrPhase().getName()}"
+    )
+    return chatbot_response.content, None
 
-    return chatbot_response.content, changed
 
-
-class LLMChatManager(threading.Thread, Loggable):
+class AuthoredLLMChatManager(threading.Thread, Loggable):
     def __init__(self):
         threading.Thread.__init__(self)
         Loggable.__init__(self)
@@ -260,6 +317,7 @@ class LLMChatManager(threading.Thread, Loggable):
         self.emotion_analyzer = EmotionAnalyzer()
 
         self.phase_manager = None
+        self.authoring_manager = None
         self._loop = None
         self._input_queue = asyncio.Queue()
         self._cycle_time_queue = asyncio.Queue()
@@ -292,10 +350,26 @@ class LLMChatManager(threading.Thread, Loggable):
             self._loop.call_soon_threadsafe(self._loop.stop)
 
     async def _start_chat_loop(self):
+        print("[LLMChat] Starting chat loop...")
         initialize()
-        # phase_manager 초기화
+        # PhaseManager init
         data = getTestSettingData()
         self.phase_manager = saveTestSetting(data)
+
+        print(
+            "[LLMChat] PhaseManager initialized with start phase:",
+            self.phase_manager.getStartPhase(),
+        )
+
+        def script_with_emotion():
+            print("[LLMChat] Running script with emotion analysis...")
+            yield from script(analyze_emotion)
+
+        self.authoring_manager = AuthoringManager(
+            self.phase_manager,
+            script_with_emotion,
+        )
+
         await self._handle_first_input()
 
         print("[LLMChat] Started. Waiting for user input...")
@@ -321,7 +395,9 @@ class LLMChatManager(threading.Thread, Loggable):
 
     async def _handle_first_input(self):
         response_start_time = get_current_timestamp()
-        response, changed = await executeChatbot(self.phase_manager, getHistory())
+        response, changed = await executeChatbot(
+            self.phase_manager, self.authoring_manager, getHistory()
+        )
         response_end_time = get_current_timestamp()
         addMessage("CUMPAR", response, response_start_time, response_end_time)
         if changed:
@@ -354,7 +430,9 @@ class LLMChatManager(threading.Thread, Loggable):
             self.log(f"Emotion analysis result: {emotion_result}")
 
         response_start_time = get_current_timestamp()
-        response, changed = await executeChatbot(self.phase_manager, getHistory())
+        response, changed = await executeChatbot(
+            self.phase_manager, self.authoring_manager, getHistory()
+        )
         response_end_time = get_current_timestamp()
         addMessage("CUMPAR", response, response_start_time, response_end_time)
         if changed:
@@ -366,7 +444,7 @@ class LLMChatManager(threading.Thread, Loggable):
                 PHASE_end_time,
             )
 
-        print(f"[LLMChat] CUMPAR: {response}")
+        # print(f"[LLMChat] CUMPAR: {response}")
         AsyncBroker().emit(
             (
                 "chat_response",
