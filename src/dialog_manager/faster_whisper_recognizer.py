@@ -8,13 +8,16 @@ import webrtcvad
 import wave
 from io import BytesIO
 
+import time
+from ..lib.profiler import log_step
+
+from ..lib.respeaker_tuning import find
 from ..lib.time_stamp import get_current_timestamp
 from ..lib.microphone import Microphone
 from ..lib.loggable import Loggable
 from ..message_event import MessageListener, MessageBroker, MessageType
 from ..async_event import AsyncListener, AsyncBroker, AsyncMessageType
 from ..graphics.chat_window import ChatWindow
-
 
 class FasterWhisperRecognizer(Loggable):
     """
@@ -29,14 +32,13 @@ class FasterWhisperRecognizer(Loggable):
         :param model_size: Whisper model size ('tiny', 'base', 'small', etc.)
         """
         Loggable.__init__(self)
-        self.set_tag("speech_recognizer")
+        self.set_tag("🎙️ speech_recognizer")
 
         self._mic_end = Event()
         self._recognize_thread = None
         self.whisper_start_time = 0
 
-        # 메시지 구독
-        AsyncBroker().subscribe("cumpa_listening_start", self._on_chat_listening_start)
+        # AsyncBroker().subscribe("cumpa_listening_start", self._on_chat_listening_start)
         AsyncBroker().subscribe("chat_listening_start", self._on_chat_listening_start)
         AsyncBroker().subscribe("chat_user_input", self._on_chat_user_input)
         AsyncBroker().subscribe("chat_done", self._on_chat_done)
@@ -51,14 +53,25 @@ class FasterWhisperRecognizer(Loggable):
 
         # Initialize WebRTC VAD
         self.vad = webrtcvad.Vad()
-        self.vad.set_mode(0)  # 민감도 설정 (0=낮음, 3=높음)
+        self.vad.set_mode(0)  # sensitivity (0: low, 3: high)
+
+        # vad silence detection setting
+        self.vad_buffer = []
+        self.vad_window_size = 100   # for text 1sec
+        self.vad_threshold = 0.1
+
+        self.silence_frames = 0
+        self.max_silence_frames = 10
         
-        # 오디오 데이터 버퍼
+        # Respeaker Setting
+        self.respeaker_tuning = find()
+        
+        # audio buffers
         self.audio_buffer = []
-        self.speech_detected_frames = 0  # 연속 음성 프레임 수
+        self.speech_detected_frames = 0  # accumulated voice frame
 
         self.chat_done_flag = False
-        self.chat_conected = False
+        self.chat_connected = False
 
     def _pcm_to_wav(self, pcm_data, sample_rate=16000, num_channels=1, sample_width=2):
         """
@@ -81,6 +94,7 @@ class FasterWhisperRecognizer(Loggable):
         :return: Recognized text.
         """
         try:
+            start_time = time.time()
             # Recognize speech using Faster Whisper
             segments, info = self.model.transcribe(audio_buffer,
             task="transcribe",
@@ -88,28 +102,48 @@ class FasterWhisperRecognizer(Loggable):
             temperature=0.0,
             language="ko")
             recognized_text = "".join([segment.text for segment in segments])
-            
+            end_time = time.time()
+            log_step(recognized_text, "whisper_recognition", start_time, end_time)
+
             return recognized_text.strip()
         except Exception as e:
             self.log(f"Error during recognition: {e}")
             return ""
 
+    # buffer(10 frames) based vad revise method
+    def _get_vad_result(self, chunk):
+        if self.respeaker_tuning:
+            vad_result = 1 if self.respeaker_tuning.is_voice() == 1 else 0      # is_speech()
+        else:
+            vad_result = 1 if self.vad.is_speech(chunk, sample_rate=16000) else 0
+        
+        self.vad_buffer.append(vad_result)
+        if len(self.vad_buffer) > self.vad_window_size:
+            self.vad_buffer.pop(0)
+        
+        if len(self.vad_buffer) >= self.vad_window_size:
+            avg = sum(self.vad_buffer) / self.vad_window_size
+            return avg >= self.vad_threshold
+        else:
+            return vad_result == 1
+
     def _recognize_routine(self):
         """
         Routine to process microphone input and emit messages.
         """
+        self.log("Starting Whisper recognition routine...")
         with Microphone() as mic:
-            self.log("Microphone activated for Whisper recognition.")
+            self.log("Microphone context entered for Whisper recognition")
             while mic.is_active() and not self._mic_end.is_set():
                 if not ChatWindow.use_whisper:
-                    self.chat_conected = False
-                    return  # 키보드 모드에서는 인식 중지
+                    self.chat_connected = False
+                    return
                 try:
                     # Read audio data from microphone (20ms chunks)
                     chunk = mic.read(320)  # 20ms PCM data
+                    # Check if speech is detected                
 
-                    # Check if speech is detected
-                    is_speech = self.vad.is_speech(chunk, sample_rate=16000)
+                    is_speech = self._get_vad_result(chunk)
 
                     if is_speech:
                         # 데이터를 정규화하고 필터링
@@ -140,6 +174,7 @@ class FasterWhisperRecognizer(Loggable):
 
                             # Whisper 모델로 텍스트 변환
                             try:
+                                user_input_end_time = get_current_timestamp()
                                 self.log("Whisper transcribe_audio")
                                 transcript = self._process_audio_data(wav_buffer)
 
@@ -148,38 +183,37 @@ class FasterWhisperRecognizer(Loggable):
                                     if self.TEST_MODE:
                                         print(f"Recognized: {transcript}")  # 터미널 출력
                                     else:
-                                        self.chat_conected = False
+                                        self.chat_connected = False
                                         if self.chat_done_flag :
                                             if "대화하자" in transcript and "친구님" in transcript:
-                                                self.log("일어났어요.")
                                                 AsyncBroker().emit(("wake_up", None))
-                                        else :
-                                            user_input_end_time = get_current_timestamp()
-                                            
+                                        else :                                            
                                             AsyncBroker().emit(("chat_cycle_time", {"content": "WHISPER MODE", "start_time": self.whisper_start_time, "end_time": user_input_end_time}))
                                             AsyncBroker().emit(("chat_user_input", {"content": transcript, "start_time": user_input_start_time, "end_time": user_input_end_time}))
                             except Exception as e:
+                                self._stop_recognition()
                                 print(f"Whisper processing error: {e}")
 
-                        # 버퍼 및 상태 초기화
                         self.audio_buffer = []
                         self.speech_detected_frames = 0
 
                 except Exception as e:
                     self.log(f"Error in recognition routine: {e}")
+                    self._stop_recognition()
                     break
+        self.log("Whisper recognition routine completed")
 
     def _on_chat_listening_start(self, _: AsyncMessageType[None]):
         """
         Start the speech recognition routine when listening starts.
         """
-        if self.chat_conected:
+        if self.chat_connected:
             self.log("Already start Whisper recognition.")
-            return  
+            return
         if not ChatWindow.use_whisper:
             self.log("Whisper disabled (keyboard mode)")
             return
-        self.chat_conected = True
+        self.chat_connected = True
         self._mic_end.clear()
         self._recognize_thread = Thread(target=self._recognize_routine)
         self._recognize_thread.start()
@@ -203,23 +237,31 @@ class FasterWhisperRecognizer(Loggable):
         Stop the recognition process.
         """
         self._mic_end.set()
-        self.log("Whisper Mic End Set")
+        self.log("Whisper recognition stop with Mic End Set")
         if self._recognize_thread is not None:
             self._recognize_thread.join()
             self._recognize_thread = None
-        self.log("Stopped recognition.")
-    
+        self.chat_connected = False
+        self.log("Whisper recognition thread terminated")    
+        
     def _on_chat_done_listening(self, msg: AsyncMessageType):
         self.log("Whisper_친구님 인식 시작")
         self.chat_done_flag = True
-        AsyncBroker().emit(("cumpa_listening_start", None))
+        AsyncBroker().emit(("chat_listening_start", None))
 
     def _on_wake_up(self, _: tuple[str, None]):
         self.chat_done_flag = False
-        self.log("Whisper_Wake Up")
+        self._stop_recognition()
+
+        import threading
+        def delayed_wake_response():
+            import time
+            time.sleep(0.2)
+            AsyncBroker().emit(("wake_up_audio", None))
+        threading.Thread(target=delayed_wake_response, daemon=True).start()
 
 if __name__ == "__main__":
     print("Starting Whisper Speech Recognition in Standalone Mode...")
     recognizer = FasterWhisperRecognizer()
-    recognizer.TEST_MODE = True  # 독립 실행 모드 활성화
-    recognizer._recognize_routine()  # 마이크 입력 및 음성 인식 시작
+    recognizer.TEST_MODE = True
+    recognizer._recognize_routine()

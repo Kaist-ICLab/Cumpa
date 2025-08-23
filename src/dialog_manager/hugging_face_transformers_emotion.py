@@ -1,6 +1,9 @@
 import torch
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 
+import time
+from ..lib.profiler import log_step
+
 class EmotionAnalyzer:
     def __init__(self):
         # 모델 및 토크나이저 로드
@@ -86,7 +89,7 @@ class EmotionAnalyzer:
         }
 
     def analyze_emotion(self, text):
-        
+        start_time = time.time()
         print(f"입력된 문장: {text}")
         # 입력 문장 토큰화
         inputs = self.tokenizer(text, return_tensors="pt", padding=True, truncation=True)
@@ -105,7 +108,8 @@ class EmotionAnalyzer:
                 break  # 첫 번째 일치하는 감정만 적용
 
         print(f"Raw prediction: {predicted_label_id} -> {detected_emotion}")  # 디버깅용 출력
-
+        end_time = time.time()
+        log_step(text, "emotion_analysis", start_time, end_time)
         return detected_emotion
 
 def main():

@@ -19,6 +19,9 @@ import threading
 from ..async_event import AsyncBroker, AsyncMessageType
 from .hugging_face_transformers_emotion import EmotionAnalyzer
 
+import time
+from ..lib.profiler import log_step
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Initialize DB
@@ -122,6 +125,7 @@ def saveTestSetting(data: chatbotSettingData) -> PhaseManager:
     return phase_manager
 
 async def selectTopic(phase_manager: PhaseManager, conversation_history: str) -> Any:
+    start_time = time.time()
     bot_name, bot_desc = phase_manager.getBotInfo()
     actions = phase_manager.getTopics()
     phase_info = phase_manager.getCurrPhase().getInfo()
@@ -159,7 +163,8 @@ async def selectTopic(phase_manager: PhaseManager, conversation_history: str) ->
             "conversation_history": conversation_history,
         }
     )
-
+    end_time = time.time()
+    log_step(None, "topic_selection", start_time, end_time)
     return response
 
 async def generateResponse(
@@ -168,6 +173,7 @@ async def generateResponse(
     action: str,
     action_reason: str,
 ) -> str:
+    start_time = time.time()
     bot_name, bot_desc = phase_manager.getBotInfo()
     phase_info = phase_manager.getCurrPhase().getInfo()
     
@@ -175,6 +181,7 @@ async def generateResponse(
 
     prompt_template = PromptTemplate.from_template(
         """
+    IMPORTANT: SPEAK AS SHORT AS POSSIBLE.
     [Task]
     You are a response generator of the {bot_name}, which is {bot_desc}.
     To achieve the "phase goal" within the total conversation, one "action" is selected for the current conversation turn.
@@ -203,20 +210,23 @@ async def generateResponse(
             "conversation_history": conversation_history + "\nCUMPAR: ",
         }
     )
-
+    end_time = time.time()
+    log_step(None, "response_generation", start_time, end_time)
     return response
 
 
 async def executeChatbot(
     phase_manager: PhaseManager, conversation_history: str
 ) -> tuple[str, bool]:
+    print(f"Selecting topic...")
     selector_response = await selectTopic(phase_manager, conversation_history)
     
     # next_phase_info = ""
     # if selector_response.next_phase:
     #     next_phase_info += f"\n- next phase name: {selector_response.next_phase}"
     #     next_phase_info += f"\n- next phase reason: {selector_response.next_phase_reason}"
-        
+    
+    print("Generating response...")
     chatbot_response = await generateResponse(
         phase_manager,
         conversation_history,
@@ -225,15 +235,16 @@ async def executeChatbot(
         # next_phase_info,
     )
     changed = phase_manager.goNextPhase(selector_response.next_phase)
-
+    print(f"Current phase: {phase_manager.getCurrPhase().getName()}")
     return chatbot_response.content, changed
 
 class LLMChatManager(threading.Thread, Loggable):
     def __init__(self):
         threading.Thread.__init__(self)
         Loggable.__init__(self)
-        self.set_tag("llm_chat")
-        self.emotion_analyzer = EmotionAnalyzer()
+        self.set_tag("🤖 llm_chat")
+        # self.emotion_analyzer = EmotionAnalyzer()
+        self.emotion_analyzer = None
 
         self.phase_manager = None
         self._loop = None
@@ -250,6 +261,7 @@ class LLMChatManager(threading.Thread, Loggable):
 
     def _on_cycle_time(self, msg: dict):
         if self._loop and not self._loop.is_closed():
+            self.log(f"Submitted {msg['start_time']} to Cycle Queue")
             asyncio.run_coroutine_threadsafe(self._cycle_time_queue.put(msg), self._loop)
 
     def _on_user_input(self, msg: dict):
@@ -291,10 +303,10 @@ class LLMChatManager(threading.Thread, Loggable):
 
 
     async def _handle_first_input(self):
-        response_start_time = get_current_timestamp()
+        # response_start_time = get_current_timestamp()
         response, changed = await executeChatbot(self.phase_manager, getHistory())
-        response_end_time = get_current_timestamp()
-        addMessage("CUMPAR", response, response_start_time, response_end_time)
+        # response_end_time = get_current_timestamp()
+        # addMessage("CUMPAR", response, response_start_time, response_end_time)
         if changed:
             PHASE_end_time = get_current_timestamp()
             addMessage("PHASE", self.phase_manager.getCurrPhase().getName(), PHASE_end_time, PHASE_end_time)
@@ -316,11 +328,15 @@ class LLMChatManager(threading.Thread, Loggable):
             emotion_result = self.emotion_analyzer.analyze_emotion(user_input)
             self.log(f"Emotion analysis user_input: {user_input}")
             self.log(f"Emotion analysis result: {emotion_result}")
+        else:
+            emotion_result = None
 
-        response_start_time = get_current_timestamp()
+        # response_start_time = get_current_timestamp()
+        self.log(f"Executing LLM APIs")
         response, changed = await executeChatbot(self.phase_manager, getHistory())
-        response_end_time = get_current_timestamp()
-        addMessage("CUMPAR", response, response_start_time, response_end_time)
+        self.log(f"LLM APIs Done")
+        # response_end_time = get_current_timestamp()
+        # addMessage("CUMPAR", response, response_start_time, response_end_time)
         if changed:
             PHASE_end_time = get_current_timestamp()
             addMessage("PHASE", self.phase_manager.getCurrPhase().getName(), PHASE_end_time, PHASE_end_time)
@@ -330,4 +346,5 @@ class LLMChatManager(threading.Thread, Loggable):
 
     def submit_input(self, msg: dict):
         if self._loop and not self._loop.is_closed():
+            self.log(f"Submitted {msg['content']} to Input Queue")
             asyncio.run_coroutine_threadsafe(self._input_queue.put(msg), self._loop)

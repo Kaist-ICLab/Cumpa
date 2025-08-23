@@ -27,10 +27,10 @@ class Phase:
         }
 
     def getResponseFormat(self) -> BaseModel:
-        options = [router["next_phase"] for router in self.router_list]
+        options = [router['next_phase'] for router in self.router_list]
         explanations = "\n".join(
             [
-                f"{router["next_phase"]}: {router["criteria"]}"
+                f"{router['next_phase']}: {router['criteria']}"
                 for router in self.router_list
             ]
         )
