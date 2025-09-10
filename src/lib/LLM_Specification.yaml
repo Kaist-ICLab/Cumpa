@@ -63,14 +63,11 @@ phases:
       - start
       - finish
       - ask_emotion
-      - ask_question
-      - give_example
-      - fallback
+      # - ask_question
+      # - give_example
+      # - fallback
     instruction: | 
-      Refer to the basic steps below, but you can adjust them according to the user's utterance.
-      1. Greet user.
-      2. Ask user how user feels now.
-      3. Ask user to describe the emotion, and reason of the emotion.
+      Greet user.
     # TODO: Temporary router_list; later we will remove this
     router_list:
       - criteria: If user has POSITIVE emotion, and you want user to pay attention to user's emotion.
