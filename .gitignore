@@ -1,6 +1,13 @@
-venv
-__pycache__
-.env
-conversation_history.db
-text.wav
-credentials.json
+# Cumpa
+Cumpa/venv
+Cumpa/__pycache__
+Cumpa/.env
+Cumpa/conversation_history.db
+Cumpa/text.wav
+Cumpa/credentials.json
+
+# Server
+server/venv_server
+server/__pycache__
+
+# Web (Blockly)

@@ -1,0 +1,125 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Blockly Sample App</title>
+    <style>
+      body {
+        margin: 0;
+        font-family: sans-serif;
+      }
+      #pageContainer {
+        display: grid;
+        grid-template-columns: 1fr 2fr 1fr;
+        height: 100vh;
+      }
+      #outputPane {
+        display: none !important; /* Hide Python code */
+        /*
+        border-right: 1px solid #ccc;
+        padding: 10px;
+        overflow: auto;
+        */
+      }
+      #blocklyDiv {
+        border-right: 1px solid #ccc;
+        height: 100%;
+      }
+      #interventionModal {
+        display: none;
+        position: fixed;
+        z-index: 1000;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        overflow: auto;
+        background-color: rgba(0,0,0,0.4); /* 반투명 배경 */
+      }
+      #interventionModalContent{
+        background-color: #fff;
+        margin: 15% auto;
+        padding: 20px;
+        border-radius: 12px;
+        width: 400px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+      }
+      #closeModal{
+        float: right;
+        cursor: pointer;
+        font-weight: bold;
+      }
+      #diagramPane {
+        position: relative;
+        padding: 10px;
+        overflow: auto;
+        width: 100%;
+      }
+      .mermaid {
+        background: #f9f9f9;
+        border: 1px solid #ddd;
+        padding: 10px;
+        border-radius: 6px;
+        display: flex;
+        justify-content: center; /* 가로 중앙 정렬 */
+        align-items: center;     /* 세로 중앙 정렬 */
+      }
+      #mermaid-button {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        font: 200 16px sans-serif;
+      }
+      #send-button {
+        position: absolute;
+        bottom: 10px;
+        right: 10px;
+        font: 200 16px sans-serif;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="pageContainer">
+      <div id="outputPane">
+        <pre id="generatedPythonCode"><code></code></pre>
+        <div id="output"></div>
+      </div>
+      <div id="blocklyDiv">
+      </div>
+      <div id="diagramPane">
+        <button id="mermaid-button">View Diagram</button>
+        <div class="mermaid" id="diagram"></div>
+        <button id="send-button">Run Cumpa with Script</button>
+      </div>
+      <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+      <script type="module" src="./index.js"></script>
+    </div>
+    <div id="interventionModal">
+      <div id="interventionModalContent">
+        <h2>Create New Intervention</h2>
+        <form id="interventionForm">
+          <div style="margin-bottom: 10px;">
+            <label for="interventionName">Name *</label><br>
+            <input type="text" id="interventionName" name="interventionName" required style="width:100%; padding:6px;">
+          </div>
+          <div style="margin-bottom: 10px;">
+            <label for="interventionAbstract">Brief Description *</label><br>
+            <textarea id="interventionAbstract" name="interventionAbstract" required rows="2" style="width:100%; padding:6px;"></textarea>
+          </div>
+          <div style="margin-bottom: 10px;">
+            <label for="interventionGoal">Goal *</label><br>
+            <textarea id="interventionGoal" name="interventionGoal" required rows="2" style="width:100%; padding:6px;"></textarea>
+          </div>
+          <div style="margin-bottom: 10px;">
+            <label for="interventionInstruction">Instruction *</label><br>
+            <textarea id="interventionInstruction" name="interventionInstruction" required rows="4" style="width:100%; padding:6px;"></textarea>
+          </div>
+          <div style="text-align:right; margin-top: 15px;">
+            <button type="button" id="cancel-mi-button" style="margin-right: 10px;">Cancel</button>
+            <button type="submit" id="save-mi-button">Save</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </body>
+</html>
