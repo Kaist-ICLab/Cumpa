@@ -11,3 +11,4 @@ server/venv_server
 server/__pycache__
 
 # Web (Blockly)
+web/authoring-tool/.DS_Store
