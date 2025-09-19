@@ -1,7 +1,4 @@
-import os
-import threading
-import time
-import argparse
+import os, threading, time, argparse, asyncio
 
 from dotenv import load_dotenv
 from .lib.microphone import pa as mic_pa
@@ -10,10 +7,12 @@ from .lib.loggable import Loggable
 from .audio.player import ResponsePlayer
 from .graphics.graphics import Graphics
 from .message_event import MessageListener
-from .async_event import AsyncListener
+from .async_event import AsyncListener, AsyncBroker
 from .dialog_manager.llm_chatgpt import LLMChatManager
 from .dialog_manager.llm_chatgpt_authored import AuthoredLLMChatManager
 from .dialog_manager.faster_whisper_recognizer import FasterWhisperRecognizer
+
+from src.graphics.frontend_bridge import FrontendBridge
 
 # Argument Parser to check if it's using authored mode
 parser = argparse.ArgumentParser()
@@ -76,9 +75,69 @@ class Core(threading.Thread, Loggable):
         self.log("Cleaned up")
 
 
+def _send_boot_blocking():
+    time.sleep(1.0)  # 브라우저가 WS 붙을 시간
+    try:
+        bridge = FrontendBridge()
+        print(f"[DEBUG] FrontendBridge URL = {bridge.url}")
+        asyncio.run(
+            bridge._send_event_async(
+                {"__type__": "event", "event": "boot", "msg": "Cumpa is up!"}
+            )
+        )
+        print("[DEBUG] boot event sent (thread)")
+    except Exception as e:
+        print(f"[WARN] boot event failed in thread: {e}")
+
+
+def start_background_loop() -> asyncio.AbstractEventLoop:
+    loop = asyncio.new_event_loop()
+    t = threading.Thread(target=loop.run_forever, daemon=True)
+    t.start()
+    return loop
+
+
+def forward_chat_response(event):
+    # chat_response 이벤트 payload를 웹으로 보내기
+    asyncio.run(
+        bridge._send_event_async(
+            {"__type__": "event", "event": "chat_response", **event}
+        )
+    )
+
+
+def start_bg_loop():
+    loop = asyncio.new_event_loop()
+    threading.Thread(target=loop.run_forever, daemon=True).start()
+    return loop
+
+
 if __name__ == "__main__":
     core = Core()
     core.start()
+    # Display Cumpa in web
+    bridge = FrontendBridge()
+    bg_loop = start_bg_loop()
+    asyncio.run_coroutine_threadsafe(bridge.run(), bg_loop)
 
+    async def send_event(obj: dict):
+        await bridge._send_event_async({"__type__": "event", **obj})
+
+    def boot_once():
+        time.sleep(1.0)
+        asyncio.run_coroutine_threadsafe(
+            send_event({"event": "boot", "msg": "Cumpa is up!"}), bg_loop
+        )
+
+    threading.Thread(target=boot_once, daemon=True).start()
+
+    def on_chat_response(payload):
+        asyncio.run_coroutine_threadsafe(
+            bridge._send_event_async({"event": "chat_response", **payload}), bg_loop
+        )
+
+    AsyncBroker().subscribe("chat_response", on_chat_response)
+
+    # Run GUI
     gui = Graphics()
     gui.run(log_tags=core.get_log_tags())

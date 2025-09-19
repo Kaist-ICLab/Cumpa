@@ -65,45 +65,45 @@ ws.addChangeListener((e) => {
   runPythonCode();
 });
 
-document.getElementById('send-button').addEventListener('click', async () => {
-  const code = runPythonCode(); // Get the generated Python code from the workspace.
-  // 1. Generate python code
-  console.log('Generated Python code:', code);
+// document.getElementById('send-button').addEventListener('click', async () => {
+//   const code = runPythonCode(); // Get the generated Python code from the workspace.
+//   // 1. Generate python code
+//   console.log('Generated Python code:', code);
 
-  // 2. Send the code to the server by POST request
-  try {
-    const response = await fetch('http://localhost:8000/upload_code', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ code }),
-    });
+//   // 2. Send the code to the server by POST request
+//   try {
+//     const response = await fetch('http://localhost:8000/upload_code', {
+//       method: 'POST',
+//       headers: {
+//         'Content-Type': 'application/json',
+//       },
+//       body: JSON.stringify({ code }),
+//     });
 
-    if (!response.ok) {
-      throw new Error('Network response was not ok');
-    }
+//     if (!response.ok) {
+//       throw new Error('Network response was not ok');
+//     }
 
-    const result = await response.json(); // 
-    console.log('Server response:', result);
+//     const result = await response.json(); // 
+//     console.log('Server response:', result);
 
-    // 3. Run Cumpa
-    const runResponse = await fetch('http://localhost:8000/run_cumpa', {
-      method: 'POST',
-    });
+//     // 3. Run Cumpa
+//     const runResponse = await fetch('http://localhost:8000/run_cumpa', {
+//       method: 'POST',
+//     });
 
-    if (!runResponse.ok) {
-      throw new Error('Failed to run Cumpa');
-    }
+//     if (!runResponse.ok) {
+//       throw new Error('Failed to run Cumpa');
+//     }
 
-    const runResult = await runResponse.json();
-    console.log('Cumpa run result:', runResult);
-  }
-  catch (error) {
-    console.error('Error sending code to server:', error);
-    outputDiv.innerHTML = `<p>Error: ${error.message}</p>`;
-  }
-});
+//     const runResult = await runResponse.json();
+//     console.log('Cumpa run result:', runResult);
+//   }
+//   catch (error) {
+//     console.error('Error sending code to server:', error);
+//     outputDiv.innerHTML = `<p>Error: ${error.message}</p>`;
+//   }
+// });
 
 // Generating mermaid diagram
 document.getElementById('mermaid-button').addEventListener('click', () => {
@@ -181,3 +181,116 @@ document.getElementById("cancel-mi-button").addEventListener("click", (e) => {
   document.getElementById("interventionModal").style.display = "none";
   document.getElementById("interventionForm").reset();
 });
+
+// Cumpa run & disply
+let webSocket;
+
+// Dispay messages in the log div
+function appendLog(msg) {
+  const logDiv = document.getElementById("log");
+  const line = document.createElement("div");
+
+  if (typeof msg === "string") {
+    line.textContent = msg;
+  } else {
+    // 객체일 경우 JSON으로 예쁘게 출력
+    line.textContent = JSON.stringify(msg, null, 2);
+  }
+
+  logDiv.prepend(line); // 최근 로그가 위에
+}
+
+async function runCumpa() {
+  appendLog("Cumpa will start soon...");
+  const code = runPythonCode(); // Get the generated Python code from the workspace.
+  // 1. Generate python code
+  console.log('Generated Python code:', code);
+  try {
+    // 2. Send the code to the server by POST request
+    const response = await fetch("http://localhost:8000/upload_code", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code }),
+    });
+    if (!response.ok) {
+      throw new Error(`Network response was not ok`);
+    }
+    const result = await response.json();
+    console.log("Server response:", result);
+    appendLog("Code uploaded to server");
+    // 3. Run Cumpa
+    appendLog("POST /run_cumpa ...");
+    const res = await fetch("http://localhost:8000/run_cumpa", { method: "POST" });
+    if (!res.ok) {
+      appendLog(`run_cumpa failed: HTTP ${res.status}`);
+      console.log("run_cumpa failed:", res);
+      return;
+    }
+    const data = await res.json();
+    const sessionId = data.session_id;
+    document.getElementById("session").textContent = sessionId || "-";
+    appendLog({ step: "run_cumpa_ok", sessionId, pid: data.pid });
+    console.log("Cumpa run result:", data);
+
+    // 4. Real-time update in web UI using WebSocket
+    const proto = location.protocol === "https:" ? "wss" : "ws";
+    const wsUrl = `${proto}://localhost:8000/ws/cumpa/${sessionId}`;
+    appendLog({ step: "ws_connecting", wsUrl });
+    console.log("Connecting to WS:", wsUrl);
+
+    webSocket = new WebSocket(wsUrl); // global variable
+    webSocket.onopen = () => console.log("WS connected");
+    webSocket.onclose = () => console.log("WS closed");
+    webSocket.onerror = (e) => console.log(`WS error: ${e?.message || e}`);
+
+    webSocket.onmessage = (event) => {
+      const logDiv = document.getElementById("log");
+      try {
+        const obj = JSON.parse(event.data);
+        // TODO: 나중에는 chat_response와 사용자 메시지만 출력하고, 나머지는 숨기기
+        // 1) 항상 원본을 먼저 찍자 (디버깅용)
+        const raw = document.createElement("pre");
+        raw.textContent = JSON.stringify(obj, null, 2);
+        logDiv.prepend(raw);
+
+        // 2) chat_response면 보기 좋게 추가 표시
+        if (obj.event === "chat_response" && obj.msg) {
+          const line = document.createElement("div");
+          line.textContent = `[Cumpa] ${obj.msg}`;
+          logDiv.prepend(line);
+        }
+      } catch {
+        // 텍스트면 그대로 찍기
+        const line = document.createElement("div");
+        line.textContent = event.data;
+        logDiv.prepend(line);
+      }
+    };
+  } catch (err) {
+    console.log(`runCumpa error: ${err?.message || err}`);
+  }
+}
+
+// Handle Enter key for sending message
+const chatInput = document.getElementById("chatInput");
+
+chatInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey) {
+    e.preventDefault();
+    sendBtn.click();
+  }
+});
+
+// Send user input to Cumpa
+document.getElementById("sendBtn").addEventListener("click", () => {
+  const msg = chatInput.value.trim();
+  if (!msg) return;
+  if (!webSocket || webSocket.readyState !== WebSocket.OPEN) {
+    appendLog("연결 준비 중입니다. 먼저 Run을 눌러주세요.", "⚠️");
+    return;
+  }
+  appendLog(msg, "👤");
+  chatInput.value = "";
+});
+
+document.getElementById("cumpa-run-button").addEventListener("click", runCumpa);

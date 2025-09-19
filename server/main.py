@@ -1,15 +1,14 @@
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 import ast
 import astor
 import textwrap
 from pydantic import BaseModel
-import subprocess
-import os
-import subprocess
+import os, subprocess, uuid, json
 import signal
 from mermaid import generate_mermaid_text
+from typing import Dict, Set
 
 app = FastAPI()
 cumpa_process = None  # Global variable to hold the Cumpa process
@@ -23,15 +22,48 @@ app.add_middleware(
 )
 
 
-# Model for the code upload request
-class CodeRequest(BaseModel):
-    code: str
-
-
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../Cumpa"))
 AUTHORED_PATH = os.path.join(BASE_DIR, "src/lib/authored.py")
 print(f"[INFO] Authored path set to: {AUTHORED_PATH}")
 CUMPA_PYTHON_PATH = os.path.join(BASE_DIR, "venv/bin/python")
+
+
+# WebSocket manager to handle Cumpa streaming
+class WSmanager:
+    def __init__(self):
+        self.active: Dict[str, Set[WebSocket]] = {}
+
+    async def connect(self, sid: str, ws: WebSocket):
+        await ws.accept()
+        self.active.setdefault(sid, set()).add(ws)
+        await self.broadcast_text(
+            sid, json.dumps({"__type__": "server", "event": "ws_connected"})
+        )
+
+    def disconnect(self, sid: str, ws: WebSocket):
+        self.active.get(sid, set()).discard(ws)
+
+    async def broadcast_text(self, sid: str, text: str):
+        for ws in list(self.active.get(sid, set())):
+            try:
+                await ws.send_text(text)
+            except:
+                self.disconnect(sid, ws)
+    
+    async def broadcast_bytes(self, sid: str, data: bytes):
+        for ws in list(self.active.get(sid, set())):
+            try:
+                await ws.send_bytes(data)
+            except:
+                self.disconnect(sid, ws)
+
+
+ws_manager = WSmanager()
+
+
+# Model for the code upload request
+class CodeRequest(BaseModel):
+    code: str
 
 
 # Transform Blockly code to a format suitable for Cumpa.
@@ -99,7 +131,7 @@ async def upload_code(req: CodeRequest):
     try:
         transformed_code = transform_blockly_code(raw_code)
 
-        # Save
+        # Save the code in Cumpa
         with open(AUTHORED_PATH, "w") as f:
             f.write("### Auto-generated authored script\n")
             f.write(transformed_code)
@@ -123,45 +155,36 @@ def run_cumpa():
         except subprocess.TimeoutExpired:
             print("[WARN] Cumpa process did not terminate in time, killing it.")
             cumpa_process.kill()
+
+    # Make session id for WebSocket connections
+    session_id = str(uuid.uuid4())
+    env = os.environ.copy()
+    env["CUMPA_SESSION_ID"] = session_id
+    env["CUMPA_WS_URL"] = "ws://localhost:8000/ws/cumpa"
+
     # Start a new Cumpa process
     cumpa_python = os.path.join(BASE_DIR, "venv/bin/python")
-    run_sh_path = os.path.join(BASE_DIR, "src/main.py")
     cumpa_process = subprocess.Popen(
         [cumpa_python, "-m", "src.main", "--authored"],
         cwd=BASE_DIR,
         start_new_session=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        # stdout=subprocess.PIPE,
+        # stderr=subprocess.STDOUT,
+        env=env,
     )
-    print("[INFO] Cumpa process started, PID={cumpa_process.pid}")
-    return JSONResponse(content={"status": "success", "pid": cumpa_process.pid})
+    print(f"[INFO] Cumpa process started, PID={cumpa_process.pid}")
+    return JSONResponse(
+        content={
+            "status": "success",
+            "pid": cumpa_process.pid,
+            "session_id": session_id,
+        }
+    )
 
 
 @app.post("/mermaid")
 async def mermaid(req: CodeRequest):
     raw_code = req.code
-    # dummy raw code for testing
-    # raw_code = """
-    # def Stay_Present():
-    #     yield "notice_five_things"
-    #     if emotion() == "neutral":
-    #         yield "dandelion"
-    #     else:
-    #         yield "dandelion"
-    # Stay_Present()
-    # yield "dandelion"
-    # """
-    # raw_code = """def my_function():
-    # yield "Step 1"
-    # yield "Step 2"
-    # if True:
-    #     yield "Conditional Step"
-    # else:
-    #     yield "Alternative Step"
-    
-    # yield "Final Step"
-    # my_function()
-    # """
 
     try:
         diagram_text = generate_mermaid_text(raw_code)
@@ -169,3 +192,43 @@ async def mermaid(req: CodeRequest):
 
     except Exception as e:
         return JSONResponse({"status": "error", "message": str(e)}, status_code=500)
+
+
+@app.websocket("/ws/cumpa/{session_id}")
+async def ws_cumpa(session_id: str, websocket: WebSocket):
+    await ws_manager.connect(session_id, websocket)
+
+    try:
+        while True:
+            msg = await websocket.receive()
+            mtype = msg.get("type")
+            # 1. Receive message
+            if mtype == "websocket.receive":
+                if msg.get("text") is not None:
+                    await ws_manager.broadcast_text(session_id, msg["text"])
+                elif msg.get("bytes") is not None:
+                    await ws_manager.broadcast_bytes(session_id, msg["bytes"])
+                else:
+                    # text/bytes 모두 없는 receive는 무시 (드문 케이스)
+                    pass
+
+            # 2. Normal disconnect
+            elif mtype == "websocket.disconnect":
+                # 클라이언트가 정상 종료한 경우
+                break
+
+            # 3. Unexpected message type
+            else:
+                # 디버그 로깅
+                print(f"[WS DEBUG] unexpected msg type={mtype}, payload={msg}")
+
+    except WebSocketDisconnect:
+        # 예외로 끊긴 경우도 동일 처리
+        pass
+    except Exception as e:
+        # 이번에 보인 "Exception in ASGI application"의 원인 파악용 로그
+        import traceback
+        print("[WS ERROR]", e)
+        traceback.print_exc()
+    finally:
+        ws_manager.disconnect(session_id, websocket)

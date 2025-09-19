@@ -13,6 +13,14 @@ const config = {
   // Enable webpack-dev-server to get hot refresh of the app.
   devServer: {
     static: './build',
+    proxy: {
+    '/run_cumpa': 'http://localhost:8000',
+    '/ws/cumpa': {
+      target: 'ws://localhost:8000',
+      ws: true,   // Activate WebSocket proxying
+      changeOrigin: true,
+    },
+  },
   },
   module: {
     rules: [

@@ -89,7 +89,44 @@
       <div id="diagramPane">
         <button id="mermaid-button">View Diagram</button>
         <div class="mermaid" id="diagram"></div>
-        <button id="send-button">Run Cumpa with Script</button>
+        <!-- <button id="send-button">Run Cumpa with Script</button> -->
+        <button id="cumpa-run-button">Run Cumpa with Script</button>
+      </div>
+      <div id="chatPane">
+        <div style="margin:16px 0;">
+          <span style="margin-left:12px;">Session: <strong id="session">-</strong></span>
+        </div>
+
+        <!-- 대화 로그 영역 -->
+        <div
+          id="log"
+          style="
+            margin-top:8px; border:1px solid #ccc; border-radius:8px; padding:8px;
+            height:200px; overflow:auto; font-family:monospace; font-size:12px;
+          "
+        ></div>
+
+        <!-- 입력창 (세로 배치) -->
+        <div style="
+            margin-top:8px; border:1px solid #ccc; border-radius:8px;
+            padding:8px; display:flex; flex-direction:column; gap:6px;
+            "
+        >
+          <input
+            id="chatInput"
+            type="text"
+            placeholder="메시지를 입력하세요..."
+            style="padding:8px; font-size:14px; border:1px solid #ddd; border-radius:6px;"
+          />
+          <button
+            id="sendBtn"
+            style="
+              padding:8px; font-size:14px;
+              border:none; background:#4cafef; color:white;
+              border-radius:6px; cursor:pointer; width:80px;
+            "
+          >Send</button>
+        </div>
       </div>
       <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
       <script type="module" src="./index.js"></script>
