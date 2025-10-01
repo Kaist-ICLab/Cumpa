@@ -184,6 +184,7 @@ document.getElementById("cancel-mi-button").addEventListener("click", (e) => {
 
 // Cumpa run & disply
 let webSocket;
+let currSessionId = null;
 
 // Dispay messages in the log div
 function appendLog(msg) {
@@ -228,8 +229,9 @@ async function runCumpa() {
     }
     const data = await res.json();
     const sessionId = data.session_id;
+    currSessionId = sessionId;
     document.getElementById("session").textContent = sessionId || "-";
-    appendLog({ step: "run_cumpa_ok", sessionId, pid: data.pid });
+    appendLog({ step: "run_cumpa_ok", sessionId: sessionId, pid: data.pid });
     console.log("Cumpa run result:", data);
 
     // 4. Real-time update in web UI using WebSocket
@@ -271,8 +273,24 @@ async function runCumpa() {
   }
 }
 
-// Handle Enter key for sending message
-const chatInput = document.getElementById("chatInput");
+// Send user message to Cumpa via WebSocket
+function sendUserMessage(text) {
+  if (!webSocket || webSocket.readyState !== WebSocket.OPEN) {
+    appendLog("연결 준비 중입니다. 먼저 Run을 눌러주세요.");
+    return;
+  }
+  const payload = {
+    type: "user_message",
+    sessionId: currSessionId,
+    text,
+    ts: Date.now(),
+  };
+  webSocket.send(JSON.stringify(payload));
+}
+
+// UI event handlers
+const chatInput = document.getElementById("chatInput"); // Enter Key handler
+const sendBtn = document.getElementById("sendBtn");
 
 chatInput.addEventListener("keydown", (e) => {
   if (e.key === "Enter" && !e.shiftKey) {
@@ -281,16 +299,16 @@ chatInput.addEventListener("keydown", (e) => {
   }
 });
 
-// Send user input to Cumpa
-document.getElementById("sendBtn").addEventListener("click", () => {
+sendBtn.addEventListener("click", () => {
   const msg = chatInput.value.trim();
   if (!msg) return;
-  if (!webSocket || webSocket.readyState !== WebSocket.OPEN) {
-    appendLog("연결 준비 중입니다. 먼저 Run을 눌러주세요.", "⚠️");
-    return;
-  }
-  appendLog(msg, "👤");
+
+  // Echo in the log
+  appendLog(`[You] ${msg}`);
   chatInput.value = "";
+
+  // Send to Cumpa
+  sendUserMessage(msg);
 });
 
 document.getElementById("cumpa-run-button").addEventListener("click", runCumpa);

@@ -324,8 +324,11 @@ class AuthoredLLMChatManager(threading.Thread, Loggable):
         self._stop_event = threading.Event()
 
         AsyncBroker().subscribe("chat_cycle_time", self._on_cycle_time)
-        AsyncBroker().subscribe("chat_user_input", self._on_user_input)
+        # AsyncBroker().subscribe(
+        #     "chat_user_input", self._on_user_input
+        # )  # In frontend mode we don't use this
         AsyncBroker().subscribe("wake_up", self._on_wake_up)
+        AsyncBroker().subscribe("chat_user_input", self._on_frontend_user_input)
 
     async def _on_wake_up(self, _: tuple[str, None]):
         await self._handle_first_input()
@@ -337,7 +340,28 @@ class AuthoredLLMChatManager(threading.Thread, Loggable):
             )
 
     def _on_user_input(self, msg: dict):
+        print("[LLMChat] Received user input:", msg)
         self.submit_input(msg)
+
+    def _on_frontend_user_input(self, msg: dict):
+        if "content" in msg:
+            wrapped = {
+                "content": (msg.get("content") or "").strip(),
+                "start_time": msg.get("start_time")
+                or msg.get("ts")
+                or get_current_timestamp(),
+                "end_time": msg.get("end_time")
+                or msg.get("start_time")
+                or msg.get("ts")
+                or get_current_timestamp(),
+            }
+            return self.submit_input(wrapped)
+
+        # 원본 케이스(user_message)
+        text = (msg or {}).get("text", "")
+        ts = msg.get("ts") or get_current_timestamp()
+        wrapped = {"content": text, "start_time": ts, "end_time": ts}
+        self.submit_input(wrapped)
 
     def run(self):
         self._loop = asyncio.new_event_loop()
@@ -373,18 +397,41 @@ class AuthoredLLMChatManager(threading.Thread, Loggable):
         await self._handle_first_input()
 
         print("[LLMChat] Started. Waiting for user input...")
+        # while not self._stop_event.is_set():
+        #     try:
+        #         cycle_time = await asyncio.wait_for(
+        #             self._cycle_time_queue.get(), timeout=0.1
+        #         )
+        #         user_input = await asyncio.wait_for(
+        #             self._input_queue.get(), timeout=0.1
+        #         )
+        #         await self._handle_cycle_time(cycle_time)
+        #         await self._handle_user_input(user_input)
+        #     except asyncio.TimeoutError:
+        #         continue
         while not self._stop_event.is_set():
+            processed = False
+
+            # 1) 유저 입력 먼저 처리 (있으면 바로)
             try:
-                cycle_time = await asyncio.wait_for(
-                    self._cycle_time_queue.get(), timeout=0.1
-                )
-                user_input = await asyncio.wait_for(
-                    self._input_queue.get(), timeout=0.1
-                )
-                await self._handle_cycle_time(cycle_time)
+                user_input = self._input_queue.get_nowait()
+                print("[LLMChat] dequeued user_input:", user_input)  # 디버그
                 await self._handle_user_input(user_input)
-            except asyncio.TimeoutError:
-                continue
+                processed = True
+            except asyncio.QueueEmpty:
+                pass
+
+            # 2) 사이클 타임도 있으면 처리 (없으면 건너뜀)
+            try:
+                cycle = self._cycle_time_queue.get_nowait()
+                print("[LLMChat] dequeued cycle_time:", cycle)  # 디버그
+                await self._handle_cycle_time(cycle)
+                processed = True
+            except asyncio.QueueEmpty:
+                pass
+
+            if not processed:
+                await asyncio.sleep(0.05)  # CPU 쉬게 약간만 슬립
 
     async def _handle_cycle_time(self, msg: dict):
         cycle_time_text, start_time, end_time = msg
@@ -425,10 +472,13 @@ class AuthoredLLMChatManager(threading.Thread, Loggable):
             addMessage("USER_KEYBOARD", user_input, user_start_time, user_end_time)
 
         if user_input and self.emotion_analyzer:
+            print("[LLMChat] Analyzing emotion for user input...")
             emotion_result = self.emotion_analyzer.analyze_emotion(user_input)
             self.log(f"Emotion analysis user_input: {user_input}")
             self.log(f"Emotion analysis result: {emotion_result}")
-
+            print(f"[LLMChat] User input: {user_input}, Emotion: {emotion_result}")
+        else:
+            print("[LLMChat] No user input or emotion analyzer not available.")
         response_start_time = get_current_timestamp()
         response, changed = await executeChatbot(
             self.phase_manager, self.authoring_manager, getHistory()
@@ -454,4 +504,5 @@ class AuthoredLLMChatManager(threading.Thread, Loggable):
 
     def submit_input(self, msg: dict):
         if self._loop and not self._loop.is_closed():
+            print("[LLMChat] submit_input -> _input_queue:", msg)  # 디버그
             asyncio.run_coroutine_threadsafe(self._input_queue.put(msg), self._loop)

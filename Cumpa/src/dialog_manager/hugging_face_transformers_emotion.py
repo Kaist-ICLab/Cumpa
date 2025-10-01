@@ -1,6 +1,7 @@
 import torch
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 
+
 class EmotionAnalyzer:
     def __init__(self):
         # 모델 및 토크나이저 로드
@@ -79,17 +80,55 @@ class EmotionAnalyzer:
         self.emotion_map = {
             "기쁨": [50, 51, 52, 54, 58],
             "짜증난": [1, 3, 6, 7, 9],
-            "슬픔": [2, 10, 11, 12, 13, 14, 17, 18, 36, 37, 38, 40, 41, 43, 44, 45, ],
-            "부정": [15, 16, 19, 20, 21, 22, 23, 24, 25, 26, 27, 30, 31, 32, 33, 48, 49, 55],
+            "슬픔": [
+                2,
+                10,
+                11,
+                12,
+                13,
+                14,
+                17,
+                18,
+                36,
+                37,
+                38,
+                40,
+                41,
+                43,
+                44,
+                45,
+            ],
+            "부정": [
+                15,
+                16,
+                19,
+                20,
+                21,
+                22,
+                23,
+                24,
+                25,
+                26,
+                27,
+                30,
+                31,
+                32,
+                33,
+                48,
+                49,
+                55,
+            ],
             "화남": [0, 5, 8, 16, 47],
-            "중립": [4, 28, 29, 34, 35, 39, 42, 46, 53, 56, 57, 59]
+            "중립": [4, 28, 29, 34, 35, 39, 42, 46, 53, 56, 57, 59],
         }
 
     def analyze_emotion(self, text):
-        
+
         print(f"입력된 문장: {text}")
         # 입력 문장 토큰화
-        inputs = self.tokenizer(text, return_tensors="pt", padding=True, truncation=True)
+        inputs = self.tokenizer(
+            text, return_tensors="pt", padding=True, truncation=True
+        )
 
         # 모델 예측 수행 (No Grad 모드에서 실행)
         with torch.no_grad():
@@ -97,16 +136,19 @@ class EmotionAnalyzer:
 
         # 가장 높은 확률을 가진 감정 레이블 예측
         predicted_label_id = torch.argmax(outputs.logits, dim=1).item()
-        
+
         detected_emotion = "중립"
         for emotion_temp, ids in self.emotion_map.items():
             if predicted_label_id in ids:
                 detected_emotion = emotion_temp
                 break  # 첫 번째 일치하는 감정만 적용
 
-        print(f"Raw prediction: {predicted_label_id} -> {detected_emotion}")  # 디버깅용 출력
+        print(
+            f"Raw prediction: {predicted_label_id} -> {detected_emotion}"
+        )  # 디버깅용 출력
 
         return detected_emotion
+
 
 def main():
     print("터미널 감정 분석기 시작 (종료하려면 '종료' 입력):")
@@ -121,6 +163,7 @@ def main():
         result = analyzer.analyze_emotion(user_input)
         # print(f"입력된 문장: {user_input}")
         print(f"감정: {result}")
+
 
 if __name__ == "__main__":
     main()

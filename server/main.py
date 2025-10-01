@@ -1,17 +1,28 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, APIRouter, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 import ast
 import astor
 import textwrap
 from pydantic import BaseModel
-import os, subprocess, uuid, json
+import os, sys, subprocess, uuid, json
 import signal
 from mermaid import generate_mermaid_text
 from typing import Dict, Set
+from server_ws import router as ws_router
+
+# import asyncevent from Cumpa
+PARENT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if PARENT not in sys.path:
+    sys.path.insert(0, PARENT)
+from Cumpa.src.async_event import AsyncBroker
 
 app = FastAPI()
+app.include_router(ws_router)
+
+router = APIRouter()
 cumpa_process = None  # Global variable to hold the Cumpa process
+broker = AsyncBroker()
 
 app.add_middleware(
     CORSMiddleware,
@@ -26,39 +37,6 @@ BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../Cumpa"))
 AUTHORED_PATH = os.path.join(BASE_DIR, "src/lib/authored.py")
 print(f"[INFO] Authored path set to: {AUTHORED_PATH}")
 CUMPA_PYTHON_PATH = os.path.join(BASE_DIR, "venv/bin/python")
-
-
-# WebSocket manager to handle Cumpa streaming
-class WSmanager:
-    def __init__(self):
-        self.active: Dict[str, Set[WebSocket]] = {}
-
-    async def connect(self, sid: str, ws: WebSocket):
-        await ws.accept()
-        self.active.setdefault(sid, set()).add(ws)
-        await self.broadcast_text(
-            sid, json.dumps({"__type__": "server", "event": "ws_connected"})
-        )
-
-    def disconnect(self, sid: str, ws: WebSocket):
-        self.active.get(sid, set()).discard(ws)
-
-    async def broadcast_text(self, sid: str, text: str):
-        for ws in list(self.active.get(sid, set())):
-            try:
-                await ws.send_text(text)
-            except:
-                self.disconnect(sid, ws)
-    
-    async def broadcast_bytes(self, sid: str, data: bytes):
-        for ws in list(self.active.get(sid, set())):
-            try:
-                await ws.send_bytes(data)
-            except:
-                self.disconnect(sid, ws)
-
-
-ws_manager = WSmanager()
 
 
 # Model for the code upload request
@@ -192,43 +170,3 @@ async def mermaid(req: CodeRequest):
 
     except Exception as e:
         return JSONResponse({"status": "error", "message": str(e)}, status_code=500)
-
-
-@app.websocket("/ws/cumpa/{session_id}")
-async def ws_cumpa(session_id: str, websocket: WebSocket):
-    await ws_manager.connect(session_id, websocket)
-
-    try:
-        while True:
-            msg = await websocket.receive()
-            mtype = msg.get("type")
-            # 1. Receive message
-            if mtype == "websocket.receive":
-                if msg.get("text") is not None:
-                    await ws_manager.broadcast_text(session_id, msg["text"])
-                elif msg.get("bytes") is not None:
-                    await ws_manager.broadcast_bytes(session_id, msg["bytes"])
-                else:
-                    # text/bytes 모두 없는 receive는 무시 (드문 케이스)
-                    pass
-
-            # 2. Normal disconnect
-            elif mtype == "websocket.disconnect":
-                # 클라이언트가 정상 종료한 경우
-                break
-
-            # 3. Unexpected message type
-            else:
-                # 디버그 로깅
-                print(f"[WS DEBUG] unexpected msg type={mtype}, payload={msg}")
-
-    except WebSocketDisconnect:
-        # 예외로 끊긴 경우도 동일 처리
-        pass
-    except Exception as e:
-        # 이번에 보인 "Exception in ASGI application"의 원인 파악용 로그
-        import traceback
-        print("[WS ERROR]", e)
-        traceback.print_exc()
-    finally:
-        ws_manager.disconnect(session_id, websocket)

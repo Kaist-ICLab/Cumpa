@@ -96,16 +96,6 @@ def start_background_loop() -> asyncio.AbstractEventLoop:
     t.start()
     return loop
 
-
-def forward_chat_response(event):
-    # chat_response 이벤트 payload를 웹으로 보내기
-    asyncio.run(
-        bridge._send_event_async(
-            {"__type__": "event", "event": "chat_response", **event}
-        )
-    )
-
-
 def start_bg_loop():
     loop = asyncio.new_event_loop()
     threading.Thread(target=loop.run_forever, daemon=True).start()
