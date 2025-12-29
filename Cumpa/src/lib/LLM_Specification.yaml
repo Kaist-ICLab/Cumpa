@@ -63,6 +63,7 @@ phases:
       - start
       - finish
       - ask_emotion
+      - greeting_finish
       # - ask_question
       # - give_example
       # - fallback
@@ -490,7 +491,9 @@ actions:
   - action_name: start
     action_explanation: Briefly explain what will be done on the current phase and start the conversation.
   - action_name: finish
-    action_explanation: Wrap up the current intervention, without implying about the next step.
+    action_explanation: Wrap up the current intervention.
+  - action_name: greeting_finish
+    action_explanation: Wrap up the greeting phase and encourage user to continue the conversation.
   - action_name: ask_emotion
     action_explanation: Ask user how user feels now.
   - action_name: ask_question

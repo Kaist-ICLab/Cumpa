@@ -10,8 +10,16 @@
       }
       #pageContainer {
         display: grid;
-        grid-template-columns: 1fr 2fr 1fr;
+        /* 1fr 1fr 2fr == 25% 25% 50% 와 동일한 비율로 고정 */
+        grid-template-columns: 1fr 1fr 2fr;
         height: 100vh;
+      }
+
+      /* 2) 자식들이 콘텐츠로 폭을 밀지 못하게 */
+      #pageContainer > * {
+        min-width: 0;      /* 아주 중요!  */
+        min-height: 0;     /* 수직도 스크롤 가능하게 */
+        overflow: auto;    /* 넘치면 각 패널 내부 스크롤 */
       }
       #outputPane {
         display: none !important; /* Hide Python code */
@@ -22,8 +30,9 @@
         */
       }
       #blocklyDiv {
-        border-right: 1px solid #ccc;
+        grid-column: 1;  /* 첫 번째 칸 */
         height: 100%;
+        border-right: 1px solid #ccc;
       }
       #interventionModal {
         display: none;
@@ -50,12 +59,12 @@
         font-weight: bold;
       }
       #diagramPane {
+        grid-column: 2;
+        border-right: 1px solid #ccc;
         position: relative;
-        padding: 10px;
-        overflow: auto;
-        width: 100%;
       }
       .mermaid {
+        max-width: 100%;
         background: #f9f9f9;
         border: 1px solid #ddd;
         padding: 10px;
@@ -76,6 +85,96 @@
         right: 10px;
         font: 200 16px sans-serif;
       }
+      /* --- ChatPane 전용 탭 스타일 --- */
+      #chatPane .top-split-tabs{
+        display:grid;
+        grid-template-columns: 1fr 1fr; /* chat | simulation 50:50 */
+        border-bottom:1px solid #ccc;
+        background:#fff;
+      }
+      #chatPane .top-split-tabs .tab{
+        appearance:none; 
+        border:none; 
+        background:#f6f7f8;
+        padding:10px 12px; 
+        cursor:pointer; 
+        font-weight:600; 
+        text-align:center;
+        /* make sure it's inside the grid */
+        border-right:1px solid #e5e5e5;
+        overflow: auto;
+        position: relative;
+      }
+      #chatPane .top-split-tabs .tab:last-child{ border-right:none; }
+      #chatPane .top-split-tabs .tab[aria-selected="true"]{
+        background:#fff; position:relative;
+      }
+      #chatPane .top-split-tabs .tab[aria-selected="true"]::after{
+        content:""; position:absolute; bottom:-1px; left:0; right:0; height:3px; background:#4cafef;
+      }
+
+      /* 탭 패널 공통 */
+      #chatPane {
+        grid-column: 3;  /* 세 번째 칸 */
+      }
+      #chatPane .tabpanel {
+        display: flex;
+        flex-direction: column; /* 자식 요소들을 세로로 쌓음 */
+        height: calc(100vh - 40px - 100px); /* 탭바 높이와 입력창 높이를 뺀 값으로 채팅 영역 높이 설정 (조정 필요) */
+      }
+
+      /* 대화 로그 영역을 flex-grow: 1로 설정하여 남은 공간을 모두 차지하도록 함 */
+      #log {
+        flex-grow: 1; 
+        padding: 8px;
+        overflow-y: auto; /* 내용이 넘칠 때만 세로 스크롤 */
+        display: flex;
+        flex-direction: column; /* 메시지가 아래로 쌓이도록 함 (일반 채팅방처럼) */
+        gap: 10px; /* 메시지 간 간격 */
+        border: 1px solid #ccc; /* 기존 border 유지 */
+        border-radius: 8px;
+      }
+
+      /* 개별 메시지 컨테이너 스타일 */
+      .chat-message {
+        display: flex;
+        width: 100%;
+      }
+      /* Cumpa 메시지 (왼쪽) */
+      .chat-message.cumpa {
+        justify-content: flex-start; /* 왼쪽 정렬 */
+      }
+      /* 사용자 메시지 (오른쪽) */
+      .chat-message.you {
+        justify-content: flex-end; /* 오른쪽 정렬 */
+      }
+
+      /* 말풍선 스타일 */
+      .bubble {
+        max-width: 70%;
+        padding: 10px 15px;
+        border-radius: 18px;
+        line-height: 1.4;
+        word-wrap: break-word; /* 긴 단어 줄바꿈 */
+      }
+      .chat-message.cumpa .bubble {
+        background-color: #e5e5e5; /* 옅은 회색 */
+        color: #333;
+        border-top-left-radius: 4px; /* 왼쪽 말풍선 상단 왼쪽 모서리 덜 둥글게 */
+      }
+      .chat-message.you .bubble {
+        background-color: #4cafef; /* 파란색 */
+        color: white;
+        border-top-right-radius: 4px; /* 오른쪽 말풍선 상단 오른쪽 모서리 덜 둥글게 */
+      }
+
+      /* 디버깅용 JSON/RAW 로그는 숨김 */
+      .raw-debug-log {
+        display: none; 
+        font-size: 10px;
+        color: #888;
+        margin: 5px 0;
+      }
     </style>
   </head>
   <body>
@@ -90,46 +189,93 @@
         <button id="mermaid-button">View Diagram</button>
         <div class="mermaid" id="diagram"></div>
         <!-- <button id="send-button">Run Cumpa with Script</button> -->
-        <button id="cumpa-run-button">Run Cumpa with Script</button>
+        <button id="cumpa-run-button">Run Cumpa</button>
       </div>
       <div id="chatPane">
-        <div style="margin:16px 0;">
-          <span style="margin-left:12px;">Session: <strong id="session">-</strong></span>
+        <!-- 상단 탭 바 -->
+        <div class="top-split-tabs" role="tablist" aria-label="Chat/Simulation tabs">
+          <button id="tab-chat" class="tab" role="tab" aria-selected="true" aria-controls="panel-chat">Chat</button>
+          <button id="tab-sim"  class="tab" role="tab" aria-selected="false" aria-controls="panel-sim">Simulation</button>
         </div>
 
-        <!-- 대화 로그 영역 -->
-        <div
-          id="log"
-          style="
-            margin-top:8px; border:1px solid #ccc; border-radius:8px; padding:8px;
-            height:200px; overflow:auto; font-family:monospace; font-size:12px;
-          "
-        ></div>
+        <!-- Chat 패널 (기존 내용 이동) -->
+        <div id="panel-chat" class="tabpanel active" role="tabpanel" tabindex="0" aria-labelledby="tab-chat">
+          <div style="margin:16px 0; display: none;">
+            <span style="margin-left:12px;">Session: <strong id="session">-</strong></span>
+          </div>
 
-        <!-- 입력창 (세로 배치) -->
-        <div style="
-            margin-top:8px; border:1px solid #ccc; border-radius:8px;
-            padding:8px; display:flex; flex-direction:column; gap:6px;
-            "
-        >
-          <input
-            id="chatInput"
-            type="text"
-            placeholder="메시지를 입력하세요..."
-            style="padding:8px; font-size:14px; border:1px solid #ddd; border-radius:6px;"
-          />
-          <button
-            id="sendBtn"
+          <!-- 대화 로그 영역 -->
+          <div
+            id="log"
             style="
-              padding:8px; font-size:14px;
-              border:none; background:#4cafef; color:white;
-              border-radius:6px; cursor:pointer; width:80px;
+              margin-top:8px; border:1px solid #ccc; border-radius:8px; padding:8px;
+              height:200px; overflow:auto; font-family:monospace; font-size:12px;
             "
-          >Send</button>
+          ></div>
+
+          <!-- 입력창 (세로 배치) -->
+          <div style="
+              margin-top:8px; border:1px solid #ccc; border-radius:8px;
+              padding:8px; display:flex; flex-direction:column; gap:6px;
+              "
+          >
+            <input
+              id="chatInput"
+              type="text"
+              placeholder="메시지를 입력하세요..."
+              style="padding:8px; font-size:14px; border:1px solid #ddd; border-radius:6px;"
+            />
+            <button
+              id="sendBtn"
+              style="
+                padding:8px; font-size:14px;
+                border:none; background:#4cafef; color:white;
+                border-radius:6px; cursor:pointer; width:80px;
+              "
+            >Send</button>
+          </div>
+        </div>
+
+        <!-- Simulation 패널 (비워둠) -->
+        <div id="panel-sim" class="tabpanel" role="tabpanel" tabindex="0" aria-labelledby="tab-sim">
+          <!-- 나중에 채울 영역 -->
         </div>
       </div>
       <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
       <script type="module" src="./index.js"></script>
+      <script>
+        // Chat/Simulation 탭 전환
+        (function(){
+          const map = {
+            'tab-chat':'panel-chat',
+            'tab-sim':'panel-sim'
+          };
+          const tabs = Object.keys(map).map(id => document.getElementById(id));
+          const panels = Object.values(map).map(id => document.getElementById(id));
+
+          function select(tabId){
+            tabs.forEach(btn=>{
+              btn.setAttribute('aria-selected', String(btn.id === tabId));
+            });
+            panels.forEach(p=>{
+              p.classList.toggle('active', p.id === map[tabId]);
+            });
+          }
+
+          tabs.forEach(btn=>{
+            btn.addEventListener('click', ()=>select(btn.id));
+            btn.addEventListener('keydown', (e)=>{
+              const idx = tabs.indexOf(btn);
+              if(e.key === 'ArrowRight'){ (tabs[idx+1]||tabs[0]).focus(); }
+              if(e.key === 'ArrowLeft'){ (tabs[idx-1]||tabs[tabs.length-1]).focus(); }
+              if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); select(btn.id); }
+            });
+          });
+
+          // 기본: Chat 탭
+          select('tab-chat');
+        })();
+      </script>
     </div>
     <div id="interventionModal">
       <div id="interventionModalContent">

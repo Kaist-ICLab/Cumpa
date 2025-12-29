@@ -179,6 +179,16 @@ async def selectAction(phase_manager: PhaseManager, conversation_history: str) -
     # 2. Check if the action should be "finish".
     if phase_manager.next_finish:
         phase_manager.next_finish = False
+        if phase_manager.getCurrPhase().getName() == "Greeting_authored":
+            response = type(
+                "Response",
+                (object,),
+                {
+                    "action": "greeting_finish",
+                    "action_reason": f"Moving to the next phase as the greeting phase is complete.",
+                },
+            )()
+            return response
         response = type(
             "Response",
             (object,),
