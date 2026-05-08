@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Multi-turn Counseling Experiment</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <aside class="control-panel">
+        <div class="panel-card hero">
+          <p class="eyebrow">Experiment Console</p>
+          <h1>Response Prefacing Study</h1>
+          <p class="subcopy">
+            Multi-turn 상담 실험용 인터페이스. 조건은 prefacing style만 다르게 두고,
+            OpenAI 응답은 동일한 시나리오 흐름 안에서 비교합니다.
+          </p>
+        </div>
+
+        <div class="panel-card panel-section">
+          <h2>Session Setup</h2>
+          <label>
+            Participant ID
+            <input id="participantId" type="text" placeholder="P001" />
+          </label>
+          <label>
+            Scenario
+            <select id="scenarioSelect"></select>
+          </label>
+          <label>
+            Condition
+            <select id="conditionSelect"></select>
+          </label>
+          <label>
+            OpenAI Model
+            <input id="modelName" type="text" value="gpt-4o-mini" />
+          </label>
+          <label>
+            Access Token
+            <input id="accessToken" type="password" autocomplete="off" placeholder="Required when enabled" />
+          </label>
+          <button id="startButton" class="primary-button">Start Session</button>
+          <p id="setupWarning" class="muted small"></p>
+        </div>
+
+        <div class="panel-card panel-section">
+          <h2>Condition Summary</h2>
+          <div id="conditionSummary" class="summary-box"></div>
+        </div>
+
+        <div class="panel-card panel-section">
+          <h2>Round Status</h2>
+          <div id="roundStatus" class="status-grid"></div>
+        </div>
+
+        <div class="panel-card panel-section">
+          <h2>Research Notes</h2>
+          <ul class="flat-list">
+            <li>The experiment is fixed to 9 interaction rounds.</li>
+            <li>Text and TTS are revealed together with a fixed minimum latency of 5 seconds.</li>
+            <li>Logs are written to the local server as JSONL.</li>
+          </ul>
+        </div>
+      </aside>
+
+      <main class="chat-shell">
+        <section class="session-overview">
+          <article class="overview-card scenario-card">
+            <p class="eyebrow">Scenario</p>
+            <h2 id="chatTitle">Session not started</h2>
+            <div id="scenarioIntro" class="scenario-intro"></div>
+          </article>
+
+          <article class="overview-card compact-card">
+            <p class="eyebrow">Server</p>
+            <div id="connectionBadge" class="badge">Checking server…</div>
+            <p class="muted small">STT, Chat, TTS 파이프라인 상태를 확인합니다.</p>
+          </article>
+
+          <article class="overview-card compact-card">
+            <p class="eyebrow">Current Phase</p>
+            <div id="phaseLabel" class="phase-pill">Idle</div>
+            <p id="voiceStatus" class="voice-status small" data-tone="neutral">
+              마이크 및 오디오 기능 상태를 확인하는 중입니다.
+            </p>
+          </article>
+        </section>
+
+        <div class="workspace-grid">
+          <section class="interaction-card">
+            <div class="chat-header">
+              <div>
+                <p class="eyebrow">Conversational Presence</p>
+                <h2>응답 상태 패널</h2>
+              </div>
+            </div>
+
+            <div id="presenceStage" class="presence-stage" data-mode="idle" aria-live="polite">
+              <div class="wave-backdrop wave-backdrop-a"></div>
+              <div class="wave-backdrop wave-backdrop-b"></div>
+              <div class="wave-panel">
+                <span class="wave-bar"></span>
+                <span class="wave-bar"></span>
+                <span class="wave-bar"></span>
+                <span class="wave-bar"></span>
+                <span class="wave-bar"></span>
+                <span class="wave-bar"></span>
+                <span class="wave-bar"></span>
+                <span class="wave-bar"></span>
+                <span class="wave-bar"></span>
+                <span class="wave-bar"></span>
+                <span class="wave-bar"></span>
+                <span class="wave-bar"></span>
+              </div>
+              <div class="presence-copy">
+                <p class="eyebrow">Session State</p>
+                <h3 id="presenceTitle">세션 대기 중</h3>
+                <p id="presenceCaption" class="muted">
+                  참가자 ID를 입력한 뒤 세션을 시작하면
+                  이 패널이 응답 상태를 시각적으로 보여줍니다.
+                </p>
+              </div>
+              <div class="presence-pills">
+                <span id="presenceRound" class="presence-pill">Round 0/9</span>
+                <span id="presenceMode" class="presence-pill">Idle</span>
+              </div>
+            </div>
+
+            <form id="chatForm" class="composer standalone-composer" autocomplete="off">
+              <input id="userInput" type="hidden" />
+              <div class="composer-row">
+                <div class="composer-actions">
+                  <button id="recordButton" type="button" class="secondary-button" disabled>
+                    Record
+                  </button>
+                </div>
+              </div>
+            </form>
+          </section>
+
+          <div class="transcript-store hidden" aria-hidden="true">
+            <div id="messageList" class="message-list"></div>
+          </div>
+
+          <section class="survey-card">
+            <div class="chat-header">
+              <div>
+                <p class="eyebrow">Checkpoint Evaluation</p>
+                <h2>설문 기반 평가</h2>
+              </div>
+            </div>
+
+            <div id="evaluationStatus" class="evaluation-status">
+              <p class="eyebrow">평가 상태</p>
+              <h3 id="evaluationStep">평가 대기 중</h3>
+              <p id="evaluationPrompt" class="muted small">
+                라운드가 진행되면 checkpoint마다 평가가 활성화됩니다.
+              </p>
+            </div>
+
+            <form id="surveyForm" class="survey-grid">
+              <div class="survey-section full-span">
+                <div class="section-head">
+                  <p class="eyebrow">체크포인트 문항</p>
+                  <p id="ratingSectionPrompt" class="muted small">
+                    각 문항은 해당 checkpoint까지의 대화만 기준으로, 1점에서 7점 사이로 응답해 주세요.
+                  </p>
+                </div>
+                <div class="rating-grid">
+                  <div id="metricGroup1" class="rating-card" data-metric-key="metric_1">
+                    <div class="metric-copy">
+                      <span id="metricLabel1" class="metric-name">평가 문항 1</span>
+                      <span id="metricHint1" class="metric-hint">1점은 전혀 아니다, 7점은 매우 그렇다</span>
+                    </div>
+                    <div class="likert-row" role="radiogroup" aria-labelledby="metricLabel1" aria-describedby="metricHint1">
+                      <span class="likert-edge">전혀 아니다</span>
+                      <label class="likert-option"><input name="metric_1" type="radio" value="1" /><span class="likert-marker">1</span></label>
+                      <label class="likert-option"><input name="metric_1" type="radio" value="2" /><span class="likert-marker">2</span></label>
+                      <label class="likert-option"><input name="metric_1" type="radio" value="3" /><span class="likert-marker">3</span></label>
+                      <label class="likert-option"><input name="metric_1" type="radio" value="4" /><span class="likert-marker">4</span></label>
+                      <label class="likert-option"><input name="metric_1" type="radio" value="5" /><span class="likert-marker">5</span></label>
+                      <label class="likert-option"><input name="metric_1" type="radio" value="6" /><span class="likert-marker">6</span></label>
+                      <label class="likert-option"><input name="metric_1" type="radio" value="7" /><span class="likert-marker">7</span></label>
+                      <span class="likert-edge">매우 그렇다</span>
+                    </div>
+                  </div>
+                  <div id="metricGroup2" class="rating-card" data-metric-key="metric_2">
+                    <div class="metric-copy">
+                      <span id="metricLabel2" class="metric-name">평가 문항 2</span>
+                      <span id="metricHint2" class="metric-hint">1점은 전혀 아니다, 7점은 매우 그렇다</span>
+                    </div>
+                    <div class="likert-row" role="radiogroup" aria-labelledby="metricLabel2" aria-describedby="metricHint2">
+                      <span class="likert-edge">전혀 아니다</span>
+                      <label class="likert-option"><input name="metric_2" type="radio" value="1" /><span class="likert-marker">1</span></label>
+                      <label class="likert-option"><input name="metric_2" type="radio" value="2" /><span class="likert-marker">2</span></label>
+                      <label class="likert-option"><input name="metric_2" type="radio" value="3" /><span class="likert-marker">3</span></label>
+                      <label class="likert-option"><input name="metric_2" type="radio" value="4" /><span class="likert-marker">4</span></label>
+                      <label class="likert-option"><input name="metric_2" type="radio" value="5" /><span class="likert-marker">5</span></label>
+                      <label class="likert-option"><input name="metric_2" type="radio" value="6" /><span class="likert-marker">6</span></label>
+                      <label class="likert-option"><input name="metric_2" type="radio" value="7" /><span class="likert-marker">7</span></label>
+                      <span class="likert-edge">매우 그렇다</span>
+                    </div>
+                  </div>
+                  <div id="metricGroup3" class="rating-card" data-metric-key="metric_3">
+                    <div class="metric-copy">
+                      <span id="metricLabel3" class="metric-name">평가 문항 3</span>
+                      <span id="metricHint3" class="metric-hint">1점은 전혀 아니다, 7점은 매우 그렇다</span>
+                    </div>
+                    <div class="likert-row" role="radiogroup" aria-labelledby="metricLabel3" aria-describedby="metricHint3">
+                      <span class="likert-edge">전혀 아니다</span>
+                      <label class="likert-option"><input name="metric_3" type="radio" value="1" /><span class="likert-marker">1</span></label>
+                      <label class="likert-option"><input name="metric_3" type="radio" value="2" /><span class="likert-marker">2</span></label>
+                      <label class="likert-option"><input name="metric_3" type="radio" value="3" /><span class="likert-marker">3</span></label>
+                      <label class="likert-option"><input name="metric_3" type="radio" value="4" /><span class="likert-marker">4</span></label>
+                      <label class="likert-option"><input name="metric_3" type="radio" value="5" /><span class="likert-marker">5</span></label>
+                      <label class="likert-option"><input name="metric_3" type="radio" value="6" /><span class="likert-marker">6</span></label>
+                      <label class="likert-option"><input name="metric_3" type="radio" value="7" /><span class="likert-marker">7</span></label>
+                      <span class="likert-edge">매우 그렇다</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div id="styleRecognitionSection" class="survey-section full-span hidden">
+                <div class="section-head">
+                  <p class="eyebrow">스타일 인식</p>
+                  <p class="muted small">최종 checkpoint에서 전반적으로 느낀 응답 스타일을 기록합니다.</p>
+                </div>
+                <label class="survey-field">
+                  <span>가장 두드러졌다고 느낀 응답 스타일</span>
+                  <select name="dominant_style_noticed">
+                    <option value="">선택</option>
+                    <option value="neutral_direct">중립적이고 직접적인 응답</option>
+                    <option value="relational_dominant">관계 형성 중심 응답</option>
+                    <option value="reflective_dominant">반영 중심 응답</option>
+                    <option value="adaptive">상황에 따라 조절되는 응답</option>
+                    <option value="unclear">잘 모르겠음</option>
+                  </select>
+                </label>
+              </div>
+
+              <div class="survey-section full-span grow">
+                <div class="section-head">
+                  <p class="eyebrow">관찰 메모</p>
+                  <p class="muted small">대화 흐름, 어색한 지점, 특이 반응을 조금 더 구체적으로 기록합니다.</p>
+                </div>
+                <label class="survey-field">
+                  <span>자유 메모</span>
+                  <textarea name="notes" rows="5" placeholder="예: 어느 응답이 특히 자연스러웠는지, 어색했던 지점은 어디였는지, 참가자가 어떻게 반응했는지"></textarea>
+                </label>
+              </div>
+
+              <div class="actions survey-actions">
+                <button id="saveSurveyButton" type="submit" class="secondary-button" disabled>
+                  평가 저장
+                </button>
+                <button id="downloadButton" type="button" class="secondary-button" disabled>
+                  세션 JSON 다운로드
+                </button>
+              </div>
+            </form>
+          </section>
+        </div>
+      </main>
+    </div>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
