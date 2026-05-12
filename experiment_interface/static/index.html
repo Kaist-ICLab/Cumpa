@@ -3,38 +3,30 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Multi-turn Counseling Experiment</title>
+    <title>상담 대화 세션</title>
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
     <div class="page-shell">
       <aside class="control-panel">
         <div class="panel-card hero">
-          <p class="eyebrow">Experiment Console</p>
-          <h1>Response Prefacing Study</h1>
+          <p class="eyebrow">Session Console</p>
+          <h1>상담 대화 세션</h1>
           <p class="subcopy">
-            Multi-turn 상담 실험용 인터페이스. 조건은 prefacing style만 다르게 두고,
-            OpenAI 응답은 동일한 시나리오 흐름 안에서 비교합니다.
+            안내에 따라 음성으로 대화를 진행하고, 중간에 표시되는 문항에 응답해 주세요.
           </p>
         </div>
 
         <div class="panel-card panel-section">
           <h2>Session Setup</h2>
-          <label>
-            Participant ID
-            <input id="participantId" type="text" placeholder="P001" />
-          </label>
+          <input id="participantId" type="hidden" />
           <label>
             Scenario
             <select id="scenarioSelect"></select>
           </label>
           <label>
-            Condition
+            조건
             <select id="conditionSelect"></select>
-          </label>
-          <label>
-            OpenAI Model
-            <input id="modelName" type="text" value="gpt-4o-mini" />
           </label>
           <label>
             Access Token
@@ -45,7 +37,7 @@
         </div>
 
         <div class="panel-card panel-section">
-          <h2>Condition Summary</h2>
+          <h2>조건 정보</h2>
           <div id="conditionSummary" class="summary-box"></div>
         </div>
 
@@ -54,14 +46,6 @@
           <div id="roundStatus" class="status-grid"></div>
         </div>
 
-        <div class="panel-card panel-section">
-          <h2>Research Notes</h2>
-          <ul class="flat-list">
-            <li>The experiment is fixed to 9 interaction rounds.</li>
-            <li>Text and TTS are revealed together with a fixed minimum latency of 5 seconds.</li>
-            <li>Logs are written to the local server as JSONL.</li>
-          </ul>
-        </div>
       </aside>
 
       <main class="chat-shell">
@@ -117,7 +101,7 @@
                 <p class="eyebrow">Session State</p>
                 <h3 id="presenceTitle">세션 대기 중</h3>
                 <p id="presenceCaption" class="muted">
-                  참가자 ID를 입력한 뒤 세션을 시작하면
+                  세션을 시작하면
                   이 패널이 응답 상태를 시각적으로 보여줍니다.
                 </p>
               </div>
@@ -224,17 +208,17 @@
 
               <div id="styleRecognitionSection" class="survey-section full-span hidden">
                 <div class="section-head">
-                  <p class="eyebrow">스타일 인식</p>
-                  <p class="muted small">최종 checkpoint에서 전반적으로 느낀 응답 스타일을 기록합니다.</p>
+                  <p class="eyebrow">응답 방식 인식</p>
+                  <p class="muted small">최종 checkpoint에서 전반적으로 느낀 응답 방식을 기록합니다.</p>
                 </div>
                 <label class="survey-field">
-                  <span>가장 두드러졌다고 느낀 응답 스타일</span>
+                  <span>가장 두드러졌다고 느낀 응답 방식</span>
                   <select name="dominant_style_noticed">
                     <option value="">선택</option>
-                    <option value="neutral_direct">중립적이고 직접적인 응답</option>
-                    <option value="relational_dominant">관계 형성 중심 응답</option>
-                    <option value="reflective_dominant">반영 중심 응답</option>
-                    <option value="adaptive">상황에 따라 조절되는 응답</option>
+                    <option value="neutral_direct">응답 방식 1</option>
+                    <option value="relational_dominant">응답 방식 2</option>
+                    <option value="reflective_dominant">응답 방식 3</option>
+                    <option value="adaptive">응답 방식 4</option>
                     <option value="unclear">잘 모르겠음</option>
                   </select>
                 </label>

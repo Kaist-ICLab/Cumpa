@@ -28,24 +28,20 @@ const EXPERIMENT_CONFIG = {
   ],
   conditions: {
     neutral_direct: {
-      label: "Neutral Direct",
-      summary:
-        "Prefacing cue를 최소화하고, 중립적이면서 direct한 질문/진술로 대화를 이어갑니다.",
+      label: "조건 1",
+      summary: "조건 1로 세션을 진행합니다.",
     },
     relational_dominant: {
-      label: "Relational-dominant",
-      summary:
-        "인정, 지지, 정상화, 공감형 prefacing을 중심적으로 배치합니다.",
+      label: "조건 2",
+      summary: "조건 2로 세션을 진행합니다.",
     },
     reflective_dominant: {
-      label: "Reflective-dominant",
-      summary:
-        "재진술과 반영을 중심으로 사용자의 상태와 의미를 되비춥니다.",
+      label: "조건 3",
+      summary: "조건 3으로 세션을 진행합니다.",
     },
     adaptive: {
-      label: "Adaptive",
-      summary:
-        "단계에 따라 prefacing 전략을 바꿉니다. 초반 관계 형성, 중반 탐색/정리, 후반 마무리/연결의 흐름을 따릅니다.",
+      label: "조건 4",
+      summary: "조건 4로 세션을 진행합니다.",
     },
   },
   phaseMap(totalRounds) {
@@ -219,7 +215,7 @@ function init() {
     mode: "idle",
     title: "세션 대기 중",
     caption:
-      "참가자 ID를 입력한 뒤 세션을 시작하면\n이 패널이 응답 상태를 시각적으로 보여줍니다.",
+      "세션을 시작하면\n이 패널이 응답 상태를 시각적으로 보여줍니다.",
   });
   setSurveyEnabled(false);
   bindEvents();
@@ -413,7 +409,7 @@ function syncPresenceToState() {
       mode: "idle",
       title: "세션 대기 중",
       caption:
-        "참가자 ID를 입력한 뒤 세션을 시작하면\n이 패널이 응답 상태를 시각적으로 보여줍니다.",
+        "세션을 시작하면\n이 패널이 응답 상태를 시각적으로 보여줍니다.",
     });
     return;
   }
@@ -593,24 +589,27 @@ function syncRecordButton() {
   els.recordButton.textContent = isRecording ? "Stop" : "Record";
 }
 
+function generateParticipantId() {
+  const timestamp = Date.now().toString(36);
+  const randomPart = Math.random().toString(36).slice(2, 8);
+  return `P-${timestamp}-${randomPart}`;
+}
+
 function startSession() {
-  const participantId = els.participantId.value.trim();
-  if (!participantId) {
-    els.setupWarning.textContent = "Participant ID를 입력하세요.";
-    return;
-  }
   if (state.accessTokenRequired && !getAccessToken()) {
     els.setupWarning.textContent = "서버 접근 토큰을 입력하세요.";
     return;
   }
 
+  const participantId = els.participantId.value.trim() || generateParticipantId();
+  els.participantId.value = participantId;
   state.sessionId = `${participantId}_${Date.now()}`;
   state.participantId = participantId;
   state.scenarioId = els.scenarioSelect.value;
   state.condition = els.conditionSelect.value;
   state.rounds = EXPERIMENT_CONFIG.fixedRounds;
   state.currentRound = 0;
-  state.model = els.modelName.value.trim() || "gpt-4o-mini";
+  state.model = els.modelName?.value.trim() || state.model || "gpt-4o-mini";
   state.messages = [];
   state.transcript = [];
   state.evaluations = [];
@@ -622,7 +621,7 @@ function startSession() {
   resetSurveyForm();
 
   const scenario = getScenario();
-  els.chatTitle.textContent = `${participantId} · ${EXPERIMENT_CONFIG.conditions[state.condition].label}`;
+  els.chatTitle.textContent = `세션 진행 중 · ${EXPERIMENT_CONFIG.conditions[state.condition].label}`;
   els.scenarioIntro.textContent = scenario.intro;
   els.messageList.innerHTML = "";
   addMessage("meta", `Session started · ${state.rounds} rounds`);
