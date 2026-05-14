@@ -21,9 +21,14 @@ SESSION_DIR = ROOT / "sessions"
 
 DEFAULT_MODEL = os.environ.get("OPENAI_CHAT_MODEL", "gpt-4o-mini")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
+OPENAI_CHAT_MAX_COMPLETION_TOKENS = int(os.environ.get("OPENAI_CHAT_MAX_COMPLETION_TOKENS", "512"))
+OPENAI_CHAT_TIMEOUT = float(os.environ.get("OPENAI_CHAT_TIMEOUT", "60"))
 OPENAI_STT_MODEL = os.environ.get("OPENAI_STT_MODEL", "gpt-4o-mini-transcribe")
+OPENAI_STT_LANGUAGE = os.environ.get("OPENAI_STT_LANGUAGE", "ko")
+OPENAI_STT_TIMEOUT = float(os.environ.get("OPENAI_STT_TIMEOUT", "60"))
 OPENAI_TTS_MODEL = os.environ.get("OPENAI_TTS_MODEL", "gpt-4o-mini-tts")
 OPENAI_TTS_VOICE = os.environ.get("OPENAI_TTS_VOICE", "alloy")
+OPENAI_TTS_TIMEOUT = float(os.environ.get("OPENAI_TTS_TIMEOUT", "60"))
 EXPERIMENT_ACCESS_TOKEN = os.environ.get("EXPERIMENT_ACCESS_TOKEN", "")
 
 
@@ -81,7 +86,7 @@ def call_openai_chat(model: str, system_instruction: str, history: list[dict]) -
         "messages": messages,
         "temperature": 0.7,
         "top_p": 0.9,
-        "max_completion_tokens": 512,
+        "max_completion_tokens": OPENAI_CHAT_MAX_COMPLETION_TOKENS,
     }
     req = request.Request(
         "https://api.openai.com/v1/chat/completions",
@@ -94,7 +99,7 @@ def call_openai_chat(model: str, system_instruction: str, history: list[dict]) -
     )
 
     try:
-        with request.urlopen(req, timeout=60) as resp:
+        with request.urlopen(req, timeout=OPENAI_CHAT_TIMEOUT) as resp:
             data = json.loads(resp.read().decode("utf-8"))
     except error.HTTPError as exc:
         details = exc.read().decode("utf-8", errors="replace")
@@ -123,6 +128,8 @@ def call_openai_stt(audio_bytes: bytes, mime_type: str) -> dict:
 
     body = bytearray()
     fields = [("model", OPENAI_STT_MODEL)]
+    if OPENAI_STT_LANGUAGE:
+        fields.append(("language", OPENAI_STT_LANGUAGE))
     for name, value in fields:
         body.extend(f"--{boundary}\r\n".encode("utf-8"))
         body.extend(f'Content-Disposition: form-data; name="{name}"\r\n\r\n'.encode("utf-8"))
@@ -151,7 +158,7 @@ def call_openai_stt(audio_bytes: bytes, mime_type: str) -> dict:
     )
 
     try:
-        with request.urlopen(req, timeout=60) as resp:
+        with request.urlopen(req, timeout=OPENAI_STT_TIMEOUT) as resp:
             data = json.loads(resp.read().decode("utf-8"))
     except error.HTTPError as exc:
         details = exc.read().decode("utf-8", errors="replace")
@@ -186,7 +193,7 @@ def call_openai_tts(text: str) -> dict:
     )
 
     try:
-        with request.urlopen(req, timeout=60) as resp:
+        with request.urlopen(req, timeout=OPENAI_TTS_TIMEOUT) as resp:
             audio = resp.read()
             content_type = resp.headers.get("Content-Type", "audio/mpeg")
     except error.HTTPError as exc:
@@ -207,6 +214,7 @@ class ExperimentHandler(SimpleHTTPRequestHandler):
 
     def end_headers(self):
         self.send_header("Cache-Control", "no-store")
+        self.send_header("Permissions-Policy", "microphone=(self)")
         super().end_headers()
 
     def _send_json(self, payload: dict, status: int = HTTPStatus.OK):
@@ -215,7 +223,10 @@ class ExperimentHandler(SimpleHTTPRequestHandler):
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(encoded)))
         self.end_headers()
-        self.wfile.write(encoded)
+        try:
+            self.wfile.write(encoded)
+        except (BrokenPipeError, ConnectionResetError):
+            pass
 
     def _is_authorized(self) -> bool:
         if not EXPERIMENT_ACCESS_TOKEN:
@@ -290,6 +301,7 @@ class ExperimentHandler(SimpleHTTPRequestHandler):
             self._send_json({"ok": False, "error": str(exc)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
 
     def handle_stt(self):
+        payload = {}
         try:
             payload = self.parse_json()
             audio_bytes = base64.b64decode(payload["audio_base64"])
@@ -298,13 +310,26 @@ class ExperimentHandler(SimpleHTTPRequestHandler):
             self._log_event(
                 payload.get("session_id"),
                 "stt_result",
-                {"mime_type": mime_type, "transcript": response["text"]},
+                {
+                    "mime_type": mime_type,
+                    "byte_length": len(audio_bytes),
+                    "transcript": response["text"],
+                },
             )
             self._send_json({"ok": True, "text": response["text"]})
         except Exception as exc:
+            self._log_event(
+                payload.get("session_id"),
+                "stt_error",
+                {
+                    "mime_type": payload.get("mime_type"),
+                    "error": str(exc),
+                },
+            )
             self._send_json({"ok": False, "error": str(exc)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
 
     def handle_tts(self):
+        payload = {}
         try:
             payload = self.parse_json()
             response = call_openai_tts(payload["text"])
@@ -315,6 +340,14 @@ class ExperimentHandler(SimpleHTTPRequestHandler):
             )
             self._send_json({"ok": True, **response})
         except Exception as exc:
+            self._log_event(
+                payload.get("session_id"),
+                "tts_error",
+                {
+                    "text_length": len(payload.get("text", "")),
+                    "error": str(exc),
+                },
+            )
             self._send_json({"ok": False, "error": str(exc)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
 
     def handle_log(self):

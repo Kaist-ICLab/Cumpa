@@ -149,7 +149,7 @@ const state = {
   sessionCompleted: false,
 };
 
-const REVEAL_LATENCY_MS = 5000;
+const REVEAL_LATENCY_MS = 10000;
 
 const els = {
   participantId: document.getElementById("participantId"),
@@ -879,7 +879,7 @@ async function submitCurrentInput() {
   renderPresence({
     mode: "processing",
     title: "AI가 응답을 준비 중",
-    caption: "생성 결과와 오디오를 맞춘 뒤, 최소 5초 지연 규칙에 맞춰 응답을 공개합니다.",
+    caption: "생성 결과와 오디오를 맞춘 뒤, 최소 10초 지연 규칙에 맞춰 응답을 공개합니다.",
   });
 
   addMessage("user", text);
@@ -922,8 +922,8 @@ async function submitCurrentInput() {
     try {
       preparedAudio = await prepareAssistantAudio(data.text);
       ttsReadyLatencyMs = preparedAudio.ttsReadyLatencyMs;
-    } catch (err) {
-      setVoiceStatus("음성 출력 준비에 실패했습니다. 텍스트 응답은 그대로 진행됩니다.", "error");
+    } catch (_err) {
+      // TTS is best-effort; keep the participant flow moving without surfacing an error card.
     }
 
     const readyLatencyMs = Math.max(modelLatencyMs, ttsReadyLatencyMs ?? 0);
@@ -963,8 +963,8 @@ async function submitCurrentInput() {
       try {
         await preparedAudio.audio.play();
         audioPlayStartedLatencyMs = Math.round(performance.now() - submitStartedAt);
-      } catch (err) {
-        setVoiceStatus("음성 출력 재생에 실패했습니다. 텍스트 응답을 계속 확인해 주세요.", "error");
+      } catch (_err) {
+        // Audio playback is best-effort; keep the participant flow moving without surfacing an error card.
       }
     }
     postLog({
